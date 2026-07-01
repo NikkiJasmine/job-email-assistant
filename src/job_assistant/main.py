@@ -63,11 +63,28 @@ def run() -> None:
     thread_ids = gmail_client.search_candidate_threads(gmail, config.max_emails_per_run)
     logger.info("Found %d candidate thread(s) to check", len(thread_ids))
 
+    failure_count = 0
     for thread_id in thread_ids:
         try:
             _process_thread(gmail, notion, llm, thread_id)
         except Exception:
+            failure_count += 1
             logger.exception("Failed processing thread %s; will retry next run", thread_id)
+
+    if failure_count:
+        logger.warning("%d of %d thread(s) failed this run", failure_count, len(thread_ids))
+    # If every single candidate failed, this is very unlikely to be a batch
+    # of unrelated per-email flukes -- it's much more likely a systemic
+    # problem (bad credentials, wrong Notion database id, etc). Fail the run
+    # loudly so GitHub Actions reports it as failed and the built-in
+    # failure-email notification actually fires, instead of silently
+    # reporting success while nothing worked.
+    if thread_ids and failure_count == len(thread_ids):
+        raise RuntimeError(
+            f"All {failure_count} candidate thread(s) failed to process -- "
+            "likely a systemic issue (credentials, Notion database id, etc), "
+            "not per-email flukes. See exception logs above for the root cause."
+        )
 
 
 def _process_thread(gmail, notion, llm, thread_id: str) -> None:

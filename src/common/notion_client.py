@@ -4,9 +4,13 @@ Uses the stable "database_id"-based endpoints (API version 2022-06-28)
 rather than the newer multi-data-source API, since the CRM Database is a
 normal single-data-source database -- this keeps the integration simple.
 
-NOTION_DATA_SOURCE_ID should be the plain database UUID (e.g.
-"88ec86e8-085d-4b7d-a155-d26b1e2e554f"), not the "collection://" URI form
-used by Notion's internal tooling -- strip that prefix if present.
+IMPORTANT ID GOTCHA: under Notion's current data model, a database's own ID
+and its (single) data source's ID are two DIFFERENT UUIDs. This client's
+"database_id" config value must be the database's own page ID -- the UUID
+in the database's Notion URL (e.g. notion.so/workspace/Name-<this-uuid>) --
+NOT the "collection://<uuid>" data source ID shown in Notion's internal
+fetch/search tooling. Passing the data source UUID here returns a 404 from
+/v1/databases/{id}/query even with a valid, correctly-shared token.
 """
 
 from dataclasses import dataclass
@@ -17,10 +21,16 @@ NOTION_API_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
 
-def _normalize_database_id(data_source_id: str) -> str:
-    if data_source_id.startswith("collection://"):
-        return data_source_id[len("collection://") :]
-    return data_source_id
+def _normalize_database_id(database_id: str) -> str:
+    """Strips a "collection://" prefix if present.
+
+    Note this only removes the prefix -- it does not fix a value that is a
+    data source ID rather than a database ID (see module docstring). Those
+    are different UUIDs; this function can't tell them apart.
+    """
+    if database_id.startswith("collection://"):
+        return database_id[len("collection://") :]
+    return database_id
 
 
 def _plain_rich_text(page: dict, property_name: str) -> str:
