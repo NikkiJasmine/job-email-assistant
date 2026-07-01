@@ -20,23 +20,31 @@ Hourly assistant that scans your Gmail for recruitment/job-related emails, summa
    ```
    This opens a browser, asks you to consent, and prints a `refresh_token`.
 
-### 2. Anthropic
+### 2. LLM provider
 
-Create an API key at console.anthropic.com.
+This project is provider-agnostic: pick **one** of Anthropic, OpenAI, or Google Gemini via `LLM_PROVIDER`. Only that provider's API key is required.
+
+| `LLM_PROVIDER` | API key                  | Model env var  | Default model        | Get a key at            |
+| -------------- | ------------------------- | -------------- | --------------------- | ------------------------ |
+| `anthropic`    | `ANTHROPIC_API_KEY`       | `CLAUDE_MODEL` | `claude-sonnet-5`      | console.anthropic.com    |
+| `openai`       | `OPENAI_API_KEY`          | `OPENAI_MODEL` | `gpt-4o-mini`          | platform.openai.com      |
+| `gemini`       | `GEMINI_API_KEY`          | `GEMINI_MODEL` | `gemini-1.5-flash`     | aistudio.google.com      |
+
+Switching providers later is just changing `LLM_PROVIDER` (and the matching API key) — no code changes needed.
 
 ### 3. Notion
 
 1. Create an internal integration at notion.so/my-integrations with Read/Update/Insert content capabilities.
 2. Open your "CRM Database" page in Notion → `...` menu → **Connections** → add the integration. Without this step every API call 404s.
-3. Add the new properties listed in the plan (`Role / Job Title`, `Recruiter Name`, `Recruiter Email`, `Date Received`, `Date Replied`, `Stage`, `Email Summary`, `Suggested Reply`, `Follow-up Date`, `Interview Date`, `Gmail Thread Link`, `Gmail Thread ID`), plus 5 new options on the existing `Status` select: `Interview Invitation`, `Rejection`, `Next Step`, `Assessment`, `Request for Information`.
+3. Add the new properties listed in the plan (`Role / Job Title`, `Recruiter Name`, `Recruiter Email`, `Date Received`, `Date Replied`, `Stage`, `Email Summary`, `Suggested Reply`, `Follow-up Date`, `Interview Date`, `Gmail Thread Link`, `Gmail Thread ID`, `Raw Email Body`), plus 6 new options on the existing `Status` select: `Interview Invitation`, `Rejection`, `Next Step`, `Assessment`, `Request for Information`, `Needs AI Review`.
 
 ### 4. GitHub repository secrets & variables
 
 Repo Settings → Secrets and variables → Actions.
 
-**Secrets:** `ANTHROPIC_API_KEY`, `NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
+**Secrets:** `NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, plus whichever of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` matches your chosen provider.
 
-**Variables:** `CLAUDE_MODEL` (default `claude-sonnet-5`), `NOTION_DATA_SOURCE_ID`, `MAX_EMAILS_PER_RUN` (default `20`)
+**Variables:** `LLM_PROVIDER` (default `anthropic`), `CLAUDE_MODEL` / `OPENAI_MODEL` / `GEMINI_MODEL` (whichever applies), `NOTION_DATA_SOURCE_ID`, `MAX_EMAILS_PER_RUN` (default `20`)
 
 ## How it runs
 
@@ -50,6 +58,17 @@ Repo Settings → Secrets and variables → Actions.
 6. Creates/updates the matching row in your Notion CRM Database, including the new `Last Processed Message ID`, so a failed run retries cleanly next hour and a successful one won't be redone.
 
 You always review and send replies yourself from Gmail.
+
+### Resilience to LLM provider outages
+
+The LLM provider is a third-party dependency, and this pipeline is designed so that provider trouble (an outage, an expired/invalid key, no credits left, being rate-limited, etc) never fails the whole run. When a provider call fails for a given email, the pipeline:
+
+1. Logs the email to Notion (creating or updating its row as usual).
+2. Sets its `Status` to `Needs AI Review`.
+3. Saves the raw email body in the `Raw Email Body` property, so nothing is lost.
+4. Continues on to the remaining emails in the run — one bad provider call never stops the rest.
+
+Rows flagged `Needs AI Review` deliberately do **not** get a `Last Processed Message ID` written, so they're retried against the LLM automatically on every subsequent hourly run (no manual intervention needed) until the provider recovers or the underlying issue (e.g. an expired key) is fixed.
 
 ## Local testing
 

@@ -7,8 +7,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Maps each supported LLM_PROVIDER value to its (api_key env var, model env
+# var, default model) triple. Adding a future provider is just one more row
+# here plus a matching backend in llm_client.py -- nothing else changes.
+_PROVIDER_ENV = {
+    "anthropic": ("ANTHROPIC_API_KEY", "CLAUDE_MODEL", "claude-sonnet-5"),
+    "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4o-mini"),
+    "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL", "gemini-1.5-flash"),
+}
+
 _REQUIRED_VARS = [
-    "ANTHROPIC_API_KEY",
     "NOTION_TOKEN",
     "NOTION_DATA_SOURCE_ID",
     "GOOGLE_CLIENT_ID",
@@ -19,8 +27,9 @@ _REQUIRED_VARS = [
 
 @dataclass(frozen=True)
 class Config:
-    anthropic_api_key: str
-    claude_model: str
+    llm_provider: str
+    llm_api_key: str
+    llm_model: str
     notion_token: str
     notion_data_source_id: str
     google_client_id: str
@@ -30,7 +39,17 @@ class Config:
 
 
 def load_config() -> Config:
+    llm_provider = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
+    if llm_provider not in _PROVIDER_ENV:
+        raise RuntimeError(
+            f"Invalid LLM_PROVIDER '{llm_provider}'. Must be one of: "
+            f"{', '.join(_PROVIDER_ENV)}."
+        )
+    api_key_var, model_var, default_model = _PROVIDER_ENV[llm_provider]
+
     missing = [name for name in _REQUIRED_VARS if not os.environ.get(name)]
+    if not os.environ.get(api_key_var):
+        missing.append(api_key_var)
     if missing:
         raise RuntimeError(
             f"Missing required environment variable(s): {', '.join(missing)}. "
@@ -39,8 +58,9 @@ def load_config() -> Config:
         )
 
     return Config(
-        anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
-        claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5"),
+        llm_provider=llm_provider,
+        llm_api_key=os.environ[api_key_var],
+        llm_model=os.environ.get(model_var, default_model),
         notion_token=os.environ["NOTION_TOKEN"],
         notion_data_source_id=os.environ["NOTION_DATA_SOURCE_ID"],
         google_client_id=os.environ["GOOGLE_CLIENT_ID"],
