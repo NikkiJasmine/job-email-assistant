@@ -9,6 +9,8 @@ NOTION_DATA_SOURCE_ID should be the plain database UUID (e.g.
 used by Notion's internal tooling -- strip that prefix if present.
 """
 
+from dataclasses import dataclass
+
 import httpx
 
 NOTION_API_BASE = "https://api.notion.com/v1"
@@ -19,6 +21,17 @@ def _normalize_database_id(data_source_id: str) -> str:
     if data_source_id.startswith("collection://"):
         return data_source_id[len("collection://") :]
     return data_source_id
+
+
+def _plain_rich_text(page: dict, property_name: str) -> str:
+    rich_text = page.get("properties", {}).get(property_name, {}).get("rich_text", [])
+    return "".join(part.get("plain_text", "") for part in rich_text)
+
+
+@dataclass
+class ExistingPage:
+    page_id: str
+    last_processed_message_id: str
 
 
 class NotionClient:
@@ -34,8 +47,8 @@ class NotionClient:
             timeout=30.0,
         )
 
-    def find_page_by_thread_id(self, gmail_thread_id: str) -> str | None:
-        """Returns the Notion page id whose 'Gmail Thread ID' property matches, if any."""
+    def find_page_by_thread_id(self, gmail_thread_id: str) -> ExistingPage | None:
+        """Returns the existing page (and its last-processed message id) for this thread, if any."""
         response = self._client.post(
             f"/databases/{self.database_id}/query",
             json={
@@ -47,7 +60,13 @@ class NotionClient:
         )
         response.raise_for_status()
         results = response.json().get("results", [])
-        return results[0]["id"] if results else None
+        if not results:
+            return None
+        page = results[0]
+        return ExistingPage(
+            page_id=page["id"],
+            last_processed_message_id=_plain_rich_text(page, "Last Processed Message ID"),
+        )
 
     def create_page(self, properties: dict) -> str:
         response = self._client.post(

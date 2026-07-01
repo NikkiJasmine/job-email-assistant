@@ -57,7 +57,7 @@ def test_get_thread_parses_sender_and_subject():
     assert thread.body_text == "We'd like to interview you."
 
 
-def test_search_candidate_threads_excludes_processed_label():
+def test_search_candidate_threads_returns_all_matches():
     service = MagicMock()
     service.users().threads().list().execute.return_value = {
         "threads": [{"id": "t1"}, {"id": "t2"}]
@@ -67,29 +67,10 @@ def test_search_candidate_threads_excludes_processed_label():
 
     assert thread_ids == ["t1", "t2"]
     _, kwargs = service.users().threads().list.call_args
-    assert "-label:AI-Processed" in kwargs["q"]
-
-
-def test_get_or_create_label_reuses_existing():
-    service = MagicMock()
-    service.users().labels().list().execute.return_value = {
-        "labels": [{"id": "Label_1", "name": "AI-Processed"}]
-    }
-
-    label_id = gmail_client.get_or_create_label(service)
-
-    assert label_id == "Label_1"
-    service.users().labels().create.assert_not_called()
-
-
-def test_get_or_create_label_creates_when_missing():
-    service = MagicMock()
-    service.users().labels().list().execute.return_value = {"labels": []}
-    service.users().labels().create().execute.return_value = {"id": "Label_new"}
-
-    label_id = gmail_client.get_or_create_label(service)
-
-    assert label_id == "Label_new"
+    # No label-based filtering -- dedup happens later, against Notion, since
+    # reading/managing Gmail labels needs a scope (gmail.labels/gmail.modify)
+    # broader than the gmail.readonly + gmail.compose this project requests.
+    assert "label:" not in kwargs["q"]
 
 
 def test_create_draft_reply_never_calls_send():

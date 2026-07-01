@@ -25,12 +25,24 @@ def _client_with_mocked_http():
 def test_find_page_by_thread_id_returns_existing_page():
     client = _client_with_mocked_http()
     response = MagicMock()
-    response.json.return_value = {"results": [{"id": "page-123"}]}
+    response.json.return_value = {
+        "results": [
+            {
+                "id": "page-123",
+                "properties": {
+                    "Last Processed Message ID": {
+                        "rich_text": [{"plain_text": "msg-1"}]
+                    }
+                },
+            }
+        ]
+    }
     client._client.post.return_value = response
 
-    page_id = client.find_page_by_thread_id("thread-abc")
+    existing = client.find_page_by_thread_id("thread-abc")
 
-    assert page_id == "page-123"
+    assert existing.page_id == "page-123"
+    assert existing.last_processed_message_id == "msg-1"
     _, kwargs = client._client.post.call_args
     assert kwargs["json"]["filter"]["rich_text"]["equals"] == "thread-abc"
 

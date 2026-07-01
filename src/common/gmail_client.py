@@ -1,4 +1,4 @@
-"""Gmail API wrapper: search, read, draft-reply, and label threads.
+"""Gmail API wrapper: search, read, and draft-reply on threads.
 
 Scopes used: gmail.readonly + gmail.compose only. This module intentionally
 never implements or calls any send-capable method (users.messages.send,
@@ -6,6 +6,13 @@ users.drafts.send) -- that is the structural safeguard against ever sending
 email automatically. gmail.compose technically permits drafts.send, so the
 "never send" guarantee comes from this file simply not containing that call,
 not from the OAuth scope alone. Do not add a send function here.
+
+Deliberately no label-based dedup here: creating/reading Gmail labels
+requires the gmail.labels or gmail.modify scope, which we don't request to
+keep the OAuth scope minimal. Dedup is instead tracked in Notion (see
+notion_client.find_page_by_thread_id and job_assistant/main.py), by
+comparing each thread's latest message id against a stored
+"Last Processed Message ID" property.
 """
 
 import base64
@@ -20,13 +27,11 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.compose",
 ]
 
-AI_PROCESSED_LABEL = "AI-Processed"
-
 SEARCH_QUERY = (
     '(recruiter OR recruiting OR "job opportunity" OR interview OR position '
     'OR candidate OR hiring OR application OR "hiring manager" OR '
     '"next steps" OR assessment) '
-    f"-label:{AI_PROCESSED_LABEL} newer_than:2d in:inbox"
+    "newer_than:2d in:inbox"
 )
 
 
@@ -54,7 +59,11 @@ def build_service(client_id: str, client_secret: str, refresh_token: str):
 
 
 def search_candidate_threads(service, max_results: int) -> list[str]:
-    """Returns thread IDs matching the job/recruiter heuristic, excluding already-processed ones."""
+    """Returns thread IDs matching the job/recruiter heuristic.
+
+    Does not exclude already-processed threads -- that check happens later,
+    cheaply, against Notion (see job_assistant/main.py), before any LLM call.
+    """
     response = (
         service.users()
         .threads()
@@ -123,34 +132,6 @@ def create_draft_reply(service, thread: EmailThread, reply_body: str) -> str:
         .execute()
     )
     return draft["id"]
-
-
-def get_or_create_label(service, name: str = AI_PROCESSED_LABEL) -> str:
-    labels = service.users().labels().list(userId="me").execute().get("labels", [])
-    for label in labels:
-        if label["name"] == name:
-            return label["id"]
-
-    created = (
-        service.users()
-        .labels()
-        .create(
-            userId="me",
-            body={
-                "name": name,
-                "labelListVisibility": "labelShow",
-                "messageListVisibility": "show",
-            },
-        )
-        .execute()
-    )
-    return created["id"]
-
-
-def apply_label(service, thread_id: str, label_id: str) -> None:
-    service.users().threads().modify(
-        userId="me", id=thread_id, body={"addLabelIds": [label_id]}
-    ).execute()
 
 
 def thread_link(thread_id: str) -> str:

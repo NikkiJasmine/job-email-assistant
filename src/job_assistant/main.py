@@ -35,6 +35,7 @@ def _build_notion_properties(thread, analysis, is_new_row: bool) -> dict:
         "Suggested Reply": notion_client.text_prop(analysis.suggested_reply),
         "Gmail Thread Link": notion_client.url_prop(gmail_client.thread_link(thread.thread_id)),
         "Gmail Thread ID": notion_client.text_prop(thread.thread_id),
+        "Last Processed Message ID": notion_client.text_prop(thread.message_id),
     }
 
     stage = STAGE_MAPPING.get(analysis.classification)
@@ -59,41 +60,43 @@ def run() -> None:
     notion = notion_client.NotionClient(config.notion_token, config.notion_data_source_id)
     llm = LLMClient(config.anthropic_api_key, config.claude_model)
 
-    label_id = gmail_client.get_or_create_label(gmail)
     thread_ids = gmail_client.search_candidate_threads(gmail, config.max_emails_per_run)
     logger.info("Found %d candidate thread(s) to check", len(thread_ids))
 
     for thread_id in thread_ids:
         try:
-            _process_thread(gmail, notion, llm, thread_id, label_id)
+            _process_thread(gmail, notion, llm, thread_id)
         except Exception:
-            logger.exception(
-                "Failed processing thread %s; leaving unlabeled for retry next run", thread_id
-            )
+            logger.exception("Failed processing thread %s; will retry next run", thread_id)
 
 
-def _process_thread(gmail, notion, llm, thread_id: str, label_id: str) -> None:
+def _process_thread(gmail, notion, llm, thread_id: str) -> None:
     thread = gmail_client.get_thread(gmail, thread_id)
+
+    # Dedup: skip entirely (no LLM calls) if we've already processed this
+    # thread's current latest message. A new message on a previously-seen
+    # thread has a different message_id, so it will NOT be skipped.
+    existing_page = notion.find_page_by_thread_id(thread_id)
+    if existing_page and existing_page.last_processed_message_id == thread.message_id:
+        logger.info("Thread %s already processed, skipping", thread_id)
+        return
 
     if not llm.is_job_related(thread.body_text):
         logger.info("Thread %s judged not job-related, skipping", thread_id)
-        gmail_client.apply_label(gmail, thread_id, label_id)
         return
 
     analysis = llm.analyze_email(thread.body_text)
     logger.info("Thread %s classified as %s", thread_id, analysis.classification)
 
-    existing_page_id = notion.find_page_by_thread_id(thread_id)
-    properties = _build_notion_properties(thread, analysis, is_new_row=existing_page_id is None)
+    properties = _build_notion_properties(thread, analysis, is_new_row=existing_page is None)
 
-    if existing_page_id:
-        notion.update_page(existing_page_id, properties)
+    if existing_page:
+        notion.update_page(existing_page.page_id, properties)
     else:
         notion.create_page(properties)
 
     gmail_client.create_draft_reply(gmail, thread, analysis.suggested_reply)
-    gmail_client.apply_label(gmail, thread_id, label_id)
-    logger.info("Thread %s processed: draft created, Notion updated, labeled", thread_id)
+    logger.info("Thread %s processed: draft created, Notion updated", thread_id)
 
 
 if __name__ == "__main__":
