@@ -1,6 +1,6 @@
 # Job Email Assistant
 
-Hourly assistant that scans your Gmail for recruitment/job-related emails, summarizes and classifies each one, drafts a suggested reply (as a Gmail draft — **never sent automatically**), and logs everything to your Notion CRM Database. Runs on GitHub Actions; no server to maintain.
+Daily morning assistant that scans your Gmail for recruitment/job-related emails, summarizes and classifies each one, drafts a suggested reply (as a Gmail draft — **never sent automatically**), and logs everything to your Notion CRM Database. Runs on GitHub Actions; no server to maintain.
 
 ## One-time setup
 
@@ -11,7 +11,7 @@ Hourly assistant that scans your Gmail for recruitment/job-related emails, summa
    - User type: **External**
    - Scopes: `gmail.readonly` and `gmail.compose` only
    - Add yourself as a test user
-   - **Publishing status: "In Production"** (stay unverified — do not leave it on "Testing"). Testing-mode refresh tokens expire every 7 days under Google's unverified-app policy, which would silently break the hourly job. "In Production" while unverified removes that expiry and is standard for a personal single-user script. You'll see one extra "unverified app" click-through during the one-time consent flow below — that's expected.
+   - **Publishing status: "In Production"** (stay unverified — do not leave it on "Testing"). Testing-mode refresh tokens expire every 7 days under Google's unverified-app policy, which would silently break the daily job. "In Production" while unverified removes that expiry and is standard for a personal single-user script. You'll see one extra "unverified app" click-through during the one-time consent flow below — that's expected.
 3. Create an OAuth client ID of type **Desktop app**, download the JSON.
 4. Run the local bootstrap script to get a refresh token:
    ```
@@ -50,7 +50,7 @@ Repo Settings → Secrets and variables → Actions.
 
 ## How it runs
 
-`.github/workflows/hourly_job_emails.yml` runs every hour (`workflow_dispatch` also available for manual testing from the Actions tab). Each run:
+`.github/workflows/hourly_job_emails.yml` runs once a day, at 8:00 AM Stockholm time (`workflow_dispatch` also available for manual testing from the Actions tab). Each run:
 
 1. Searches Gmail for job/recruiter-looking emails from the last 2 days.
 2. For each thread, checks Notion for an existing row matching its Gmail thread ID whose stored `Last Processed Message ID` already matches the thread's latest message — if so, skips it (no LLM calls at all). This is the dedup mechanism: it's done via Notion rather than a Gmail label, since managing Gmail labels needs a broader OAuth scope (`gmail.labels`/`gmail.modify`) than this project requests.
@@ -58,7 +58,7 @@ Repo Settings → Secrets and variables → Actions.
 4. Summarizes, classifies, and drafts a reply for each relevant thread.
 5. Before creating a new Notion row, also checks for an existing row with the same `Company` + `Role / Job Title` (skipped if the thread-id check in step 2 already found a match, or if either field is blank). This catches the same application resurfacing on a different Gmail thread — e.g. a recruiter starting a fresh subject line instead of replying inline — and updates that row instead of creating a duplicate.
 6. Creates a Gmail **draft** on the thread (never sends).
-7. Creates/updates the matching row in your Notion CRM Database, including the new `Last Processed Message ID`, so a failed run retries cleanly next hour and a successful one won't be redone.
+7. Creates/updates the matching row in your Notion CRM Database, including the new `Last Processed Message ID`, so a failed run retries cleanly the next day and a successful one won't be redone.
 
 You always review and send replies yourself from Gmail.
 
@@ -71,7 +71,7 @@ The LLM provider is a third-party dependency, and this pipeline is designed so t
 3. Saves the raw email body in the `Raw Email Body` property, so nothing is lost.
 4. Continues on to the remaining emails in the run — one bad provider call never stops the rest.
 
-Rows flagged `Needs AI Review` deliberately do **not** get a `Last Processed Message ID` written, so they're retried against the LLM automatically on every subsequent hourly run (no manual intervention needed) until the provider recovers or the underlying issue (e.g. an expired key) is fixed.
+Rows flagged `Needs AI Review` deliberately do **not** get a `Last Processed Message ID` written, so they're retried against the LLM automatically on every subsequent daily run (no manual intervention needed) until the provider recovers or the underlying issue (e.g. an expired key) is fixed.
 
 **Automatic Anthropic → OpenAI fallback on billing errors.** If `LLM_PROVIDER=anthropic` and Anthropic specifically fails with a billing/credit error (out of credits, quota exceeded), and `OPENAI_API_KEY` is set (as a secret, independent of `LLM_PROVIDER`), the pipeline automatically retries that call against OpenAI instead of flagging it for review. Other Anthropic failures (outage, invalid key, rate limit) are unaffected and still go through the `Needs AI Review` path above. If `OPENAI_API_KEY` isn't set, or the OpenAI fallback also fails, a billing error is handled exactly like any other provider failure — the run never stops either way.
 

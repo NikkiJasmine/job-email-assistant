@@ -1,4 +1,4 @@
-name: Hourly Job Email Assistant
+name: Daily Job Email Assistant
 
 on:
   schedule:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: hourly-email-check
+  group: daily-email-check
   cancel-in-progress: false
 
 jobs:
