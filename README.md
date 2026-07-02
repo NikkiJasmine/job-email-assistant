@@ -32,6 +32,8 @@ This project is provider-agnostic: pick **one** of Anthropic, OpenAI, or Google 
 
 Switching providers later is just changing `LLM_PROVIDER` (and the matching API key) — no code changes needed.
 
+The table above is data, not hard-coded logic: it lives in [`config/providers.yaml`](config/providers.yaml), which `src/common/config.py` reads at startup. Adding a future provider (or renaming an env var) is an edit to that file plus a matching backend class in `src/common/llm_client.py` — no other code changes.
+
 ### 3. Notion
 
 1. Create an internal integration at notion.so/my-integrations with Read/Update/Insert content capabilities.

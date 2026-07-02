@@ -2,19 +2,40 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Maps each supported LLM_PROVIDER value to its (api_key env var, model env
-# var, default model) triple. Adding a future provider is just one more row
-# here plus a matching backend in llm_client.py -- nothing else changes.
-_PROVIDER_ENV = {
-    "anthropic": ("ANTHROPIC_API_KEY", "CLAUDE_MODEL", "claude-sonnet-5"),
-    "openai": ("OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4o-mini"),
-    "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL", "gemini-1.5-flash"),
-}
+# Provider registry (api_key env var, model env var, default model) lives in
+# config/providers.yaml, not in code -- adding a future provider is a data
+# change there plus a matching backend in llm_client.py's _BACKENDS, nothing
+# else. Resolved relative to this file, not cwd, so it works regardless of
+# where the process is launched from.
+_PROVIDERS_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "providers.yaml"
+
+
+def _load_provider_registry() -> dict[str, tuple[str, str, str]]:
+    try:
+        with open(_PROVIDERS_CONFIG_PATH, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            f"Provider config file not found at {_PROVIDERS_CONFIG_PATH}. "
+            "This file ships with the repo and defines the supported LLM "
+            "providers -- if it's missing, check your checkout."
+        ) from e
+
+    providers = raw.get("providers") or {}
+    return {
+        name: (settings["api_key_env"], settings["model_env"], settings["default_model"])
+        for name, settings in providers.items()
+    }
+
+
+_PROVIDER_ENV = _load_provider_registry()
 
 _REQUIRED_VARS = [
     "NOTION_TOKEN",

@@ -2,6 +2,44 @@ import pytest
 
 from src.common import config as config_module
 
+# --- Provider registry (config/providers.yaml) ------------------------------
+
+
+def test_provider_registry_is_loaded_from_yaml_file():
+    assert config_module._PROVIDERS_CONFIG_PATH.name == "providers.yaml"
+    assert config_module._PROVIDERS_CONFIG_PATH.exists()
+
+
+def test_provider_registry_has_expected_providers():
+    registry = config_module._load_provider_registry()
+
+    assert registry["anthropic"] == ("ANTHROPIC_API_KEY", "CLAUDE_MODEL", "claude-sonnet-5")
+    assert registry["openai"] == ("OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4o-mini")
+    assert registry["gemini"] == ("GEMINI_API_KEY", "GEMINI_MODEL", "gemini-1.5-flash")
+
+
+def test_missing_provider_registry_file_raises_clear_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_module, "_PROVIDERS_CONFIG_PATH", tmp_path / "does-not-exist.yaml")
+
+    with pytest.raises(RuntimeError, match="Provider config file not found"):
+        config_module._load_provider_registry()
+
+
+def test_custom_provider_registry_file_is_honored(tmp_path, monkeypatch):
+    custom_config = tmp_path / "providers.yaml"
+    custom_config.write_text(
+        "providers:\n"
+        "  llama:\n"
+        "    api_key_env: LLAMA_API_KEY\n"
+        "    model_env: LLAMA_MODEL\n"
+        "    default_model: llama-4\n"
+    )
+    monkeypatch.setattr(config_module, "_PROVIDERS_CONFIG_PATH", custom_config)
+
+    registry = config_module._load_provider_registry()
+
+    assert registry == {"llama": ("LLAMA_API_KEY", "LLAMA_MODEL", "llama-4")}
+
 _REQUIRED_NON_LLM_VARS = {
     "NOTION_TOKEN": "notion-token",
     "NOTION_DATA_SOURCE_ID": "db-id",

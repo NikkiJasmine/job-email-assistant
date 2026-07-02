@@ -1,0 +1,24 @@
+# Registry of supported LLM providers for LLM_PROVIDER.
+#
+# Each entry maps a provider name (the value of LLM_PROVIDER) to:
+#   api_key_env    -- env var holding that provider's API key (required when selected)
+#   model_env      -- env var used to override the default model for that provider
+#   default_model  -- model used when model_env is not set
+#
+# Adding a future provider is: one entry here, plus a matching backend class
+# registered in src/common/llm_client.py's _BACKENDS. No other code changes.
+providers:
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    model_env: CLAUDE_MODEL
+    default_model: claude-sonnet-5
+
+  openai:
+    api_key_env: OPENAI_API_KEY
+    model_env: OPENAI_MODEL
+    default_model: gpt-4o-mini
+
+  gemini:
+    api_key_env: GEMINI_API_KEY
+    model_env: GEMINI_MODEL
+    default_model: gemini-1.5-flash
