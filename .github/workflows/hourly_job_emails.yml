@@ -24,16 +24,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: TEMP DEBUG - fingerprint GOOGLE_CLIENT_ID (prints a hash, never the value)
-        env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-        run: |
-          python3 -c "
-          import hashlib, os
-          v = os.environ.get('GOOGLE_CLIENT_ID', '')
-          print(f'GOOGLE_CLIENT_ID length={len(v)} sha256_prefix={hashlib.sha256(v.encode()).hexdigest()[:12]}')
-          "
-
       - name: Run job email assistant
         env:
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
