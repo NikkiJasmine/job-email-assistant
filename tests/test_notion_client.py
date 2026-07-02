@@ -56,6 +56,40 @@ def test_find_page_by_thread_id_returns_none_when_no_match():
     assert client.find_page_by_thread_id("thread-missing") is None
 
 
+def test_find_page_by_company_and_role_returns_existing_page():
+    client = _client_with_mocked_http()
+    response = MagicMock()
+    response.json.return_value = {
+        "results": [
+            {
+                "id": "page-456",
+                "properties": {
+                    "Last Processed Message ID": {"rich_text": [{"plain_text": "msg-9"}]}
+                },
+            }
+        ]
+    }
+    client._client.post.return_value = response
+
+    existing = client.find_page_by_company_and_role("Acme Corp", "Engineer")
+
+    assert existing.page_id == "page-456"
+    assert existing.last_processed_message_id == "msg-9"
+    _, kwargs = client._client.post.call_args
+    filters = kwargs["json"]["filter"]["and"]
+    assert {"property": "Company", "rich_text": {"equals": "Acme Corp"}} in filters
+    assert {"property": "Role / Job Title", "rich_text": {"equals": "Engineer"}} in filters
+
+
+def test_find_page_by_company_and_role_returns_none_when_no_match():
+    client = _client_with_mocked_http()
+    response = MagicMock()
+    response.json.return_value = {"results": []}
+    client._client.post.return_value = response
+
+    assert client.find_page_by_company_and_role("Acme Corp", "Engineer") is None
+
+
 def test_create_page_uses_configured_database_id():
     client = _client_with_mocked_http()
     response = MagicMock()

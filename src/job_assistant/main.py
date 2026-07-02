@@ -5,10 +5,11 @@ import logging
 
 from src.common import gmail_client, notion_client
 from src.common.config import load_config
-from src.common.llm_client import LLMClient
+from src.common.llm_client import LLMClient, LLMProviderError
 from src.job_assistant.models import (
     CATEGORY,
     DEFAULT_STAGE_FOR_NEW_ROW,
+    NEEDS_AI_REVIEW_STATUS,
     STAGE_MAPPING,
     TRACK,
 )
@@ -51,6 +52,39 @@ def _build_notion_properties(thread, analysis, is_new_row: bool) -> dict:
     return properties
 
 
+def _build_needs_review_notion_properties(thread, is_new_row: bool) -> dict:
+    """Fallback properties written when the LLM provider itself failed (outage,
+    no credits, invalid key, rate limit, etc) -- no analysis is available, so
+    this just logs the email and its raw body for manual triage instead of
+    losing the thread entirely.
+
+    Deliberately leaves "Last Processed Message ID" unset: that field is what
+    the dedup check in _process_thread compares against, so leaving it empty
+    means this thread is retried against the LLM on every subsequent run
+    (self-healing once the provider recovers) instead of being silently
+    skipped forever.
+    """
+    name = f"{thread.sender_name} — {thread.subject or 'Needs AI Review'}"
+
+    properties = {
+        "Name": notion_client.title_prop(name),
+        "Recruiter Name": notion_client.text_prop(thread.sender_name),
+        "Recruiter Email": notion_client.email_prop(thread.sender_email),
+        "Date Received": notion_client.date_prop(datetime.date.today().isoformat()),
+        "Status": notion_client.select_prop(NEEDS_AI_REVIEW_STATUS),
+        "Raw Email Body": notion_client.text_prop(thread.body_text),
+        "Gmail Thread Link": notion_client.url_prop(gmail_client.thread_link(thread.thread_id)),
+        "Gmail Thread ID": notion_client.text_prop(thread.thread_id),
+    }
+
+    if is_new_row:
+        properties["Track"] = notion_client.select_prop(TRACK)
+        properties["Category"] = notion_client.select_prop(CATEGORY)
+        properties["Stage"] = notion_client.select_prop(DEFAULT_STAGE_FOR_NEW_ROW)
+
+    return properties
+
+
 def run() -> None:
     config = load_config()
 
@@ -58,7 +92,13 @@ def run() -> None:
         config.google_client_id, config.google_client_secret, config.google_refresh_token
     )
     notion = notion_client.NotionClient(config.notion_token, config.notion_data_source_id)
-    llm = LLMClient(config.anthropic_api_key, config.claude_model)
+    llm = LLMClient(
+        config.llm_provider,
+        config.llm_api_key,
+        config.llm_model,
+        fallback_openai_api_key=config.openai_fallback_api_key,
+        fallback_openai_model=config.openai_fallback_model,
+    )
 
     thread_ids = gmail_client.search_candidate_threads(gmail, config.max_emails_per_run)
     logger.info("Found %d candidate thread(s) to check", len(thread_ids))
@@ -98,12 +138,48 @@ def _process_thread(gmail, notion, llm, thread_id: str) -> None:
         logger.info("Thread %s already processed, skipping", thread_id)
         return
 
-    if not llm.is_job_related(thread.body_text):
-        logger.info("Thread %s judged not job-related, skipping", thread_id)
+    try:
+        if not llm.is_job_related(thread.body_text):
+            logger.info("Thread %s judged not job-related, skipping", thread_id)
+            return
+        analysis = llm.analyze_email(thread.body_text)
+    except LLMProviderError:
+        # The LLM provider itself is unavailable (outage, no credits, invalid
+        # key, rate limit, etc) -- this is not this email's fault, and it
+        # should never fail the whole run. Log the thread to Notion flagged
+        # for manual review (with the raw body saved) and move on; the next
+        # run will retry it like any other unprocessed thread.
+        logger.exception(
+            "LLM provider failed for thread %s; flagging for manual review", thread_id
+        )
+        properties = _build_needs_review_notion_properties(
+            thread, is_new_row=existing_page is None
+        )
+        if existing_page:
+            notion.update_page(existing_page.page_id, properties)
+        else:
+            notion.create_page(properties)
+        logger.info("Thread %s logged with status '%s'", thread_id, NEEDS_AI_REVIEW_STATUS)
         return
 
-    analysis = llm.analyze_email(thread.body_text)
     logger.info("Thread %s classified as %s", thread_id, analysis.classification)
+
+    # Fallback dedup: a thread-id match means we've already seen *this*
+    # Gmail thread, but the same application can resurface on a different
+    # thread (e.g. a recruiter starting a fresh subject line instead of
+    # replying inline). Before creating a new row, also check for an
+    # existing record with the same Company + Role / Job Title and update
+    # that instead of creating a duplicate. Skipped when either is blank --
+    # matching on an empty Company/Role would merge unrelated applications.
+    if existing_page is None and analysis.company and analysis.role:
+        existing_page = notion.find_page_by_company_and_role(analysis.company, analysis.role)
+        if existing_page:
+            logger.info(
+                "Thread %s matched existing application for %s / %s by Company + Role",
+                thread_id,
+                analysis.company,
+                analysis.role,
+            )
 
     properties = _build_notion_properties(thread, analysis, is_new_row=existing_page is None)
 

@@ -59,14 +59,31 @@ class NotionClient:
 
     def find_page_by_thread_id(self, gmail_thread_id: str) -> ExistingPage | None:
         """Returns the existing page (and its last-processed message id) for this thread, if any."""
+        return self._find_page(
+            {"property": "Gmail Thread ID", "rich_text": {"equals": gmail_thread_id}}
+        )
+
+    def find_page_by_company_and_role(self, company: str, role: str) -> ExistingPage | None:
+        """Returns the existing page for this Company + Role / Job Title combination, if any.
+
+        Fallback dedup match used when a thread-id lookup misses -- e.g. the
+        same application resurfaces on a new Gmail thread (a recruiter
+        starting a fresh subject line rather than replying on the original
+        thread). See job_assistant/main.py._process_thread.
+        """
+        return self._find_page(
+            {
+                "and": [
+                    {"property": "Company", "rich_text": {"equals": company}},
+                    {"property": "Role / Job Title", "rich_text": {"equals": role}},
+                ]
+            }
+        )
+
+    def _find_page(self, filter_: dict) -> ExistingPage | None:
         response = self._client.post(
             f"/databases/{self.database_id}/query",
-            json={
-                "filter": {
-                    "property": "Gmail Thread ID",
-                    "rich_text": {"equals": gmail_thread_id},
-                }
-            },
+            json={"filter": filter_},
         )
         response.raise_for_status()
         results = response.json().get("results", [])
