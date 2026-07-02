@@ -78,6 +78,16 @@ class NotionClient:
             last_processed_message_id=_plain_rich_text(page, "Last Processed Message ID"),
         )
 
+    def find_page_by_url(self, url_property_name: str, url: str) -> str | None:
+        """Returns the page id of an existing page whose given URL property equals url, if any."""
+        response = self._client.post(
+            f"/databases/{self.database_id}/query",
+            json={"filter": {"property": url_property_name, "url": {"equals": url}}},
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        return results[0]["id"] if results else None
+
     def create_page(self, properties: dict) -> str:
         response = self._client.post(
             "/pages",

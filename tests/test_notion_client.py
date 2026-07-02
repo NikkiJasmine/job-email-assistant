@@ -69,6 +69,28 @@ def test_create_page_uses_configured_database_id():
     assert kwargs["json"]["parent"]["database_id"] == "88ec86e8-085d-4b7d-a155-d26b1e2e554f"
 
 
+def test_find_page_by_url_returns_page_id_when_found():
+    client = _client_with_mocked_http()
+    response = MagicMock()
+    response.json.return_value = {"results": [{"id": "page-456"}]}
+    client._client.post.return_value = response
+
+    page_id = client.find_page_by_url("URL", "https://example.com/story")
+
+    assert page_id == "page-456"
+    _, kwargs = client._client.post.call_args
+    assert kwargs["json"]["filter"]["url"]["equals"] == "https://example.com/story"
+
+
+def test_find_page_by_url_returns_none_when_no_match():
+    client = _client_with_mocked_http()
+    response = MagicMock()
+    response.json.return_value = {"results": []}
+    client._client.post.return_value = response
+
+    assert client.find_page_by_url("URL", "https://example.com/missing") is None
+
+
 def test_update_page_calls_patch_with_page_id():
     client = _client_with_mocked_http()
     client._client.patch.return_value = MagicMock()

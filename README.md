@@ -61,6 +61,64 @@ python -m src.job_assistant.main
 
 Set `MAX_EMAILS_PER_RUN=2` in `.env` for a small first test run.
 
+---
+
+# Story Scout AI
+
+Daily assistant that scans trusted marketing, AI, branding, creator-economy, advertising, PR, social-media, and consumer-behavior RSS feeds, dedupes them, filters for relevance to a marketing LinkedIn audience, and logs each story to its own Notion database with a summary, a why-it-matters note, and a LinkedIn post angle. Runs on GitHub Actions every morning; no server to maintain.
+
+This is **Phase 1** (collect stories → Notion). Later phases — ranking stories by interest, multiple post angles, drafted posts, non-RSS sources like Instagram/TikTok/Reddit — build on the same pipeline without changing this phase's code; see `src/story_scout/sources/base.py`'s `Source` protocol for the extension point new discovery sources plug into.
+
+## One-time setup
+
+### 1. Notion
+
+1. Reuse the same internal integration created for the Job Email Assistant (or create one at notion.so/my-integrations with Read/Update/Insert content capabilities).
+2. Create a new **Story Scout** database — separate from the job-search CRM — with these properties:
+   - `Name` (title)
+   - `URL` (url)
+   - `Source` (text)
+   - `Category` (select) — add options matching `src/story_scout/sources/feeds.py`: Marketing, AI, Branding, Creator Economy, Advertising, PR, Social Media, Consumer Behavior
+   - `Published Date` (date)
+   - `Date Added` (date)
+   - `Summary` (text)
+   - `Why It Matters` (text)
+   - `LinkedIn Post Angle` (text)
+3. Open the database → `...` menu → **Connections** → add the integration.
+4. Copy the database's own page UUID from its Notion URL for `NOTION_STORY_DATABASE_ID` below (not a data source UUID — see the caveat comment next to `NOTION_DATA_SOURCE_ID` in `.env.example`, same gotcha applies here).
+
+### 2. Anthropic
+
+Reuses the same `ANTHROPIC_API_KEY` as the Job Email Assistant.
+
+### 3. GitHub repository secrets & variables
+
+Repo Settings → Secrets and variables → Actions.
+
+**Secrets:** `ANTHROPIC_API_KEY`, `NOTION_TOKEN` (both already set if you've set up the Job Email Assistant)
+
+**Variables:** `CLAUDE_MODEL` (already set), plus new **`NOTION_STORY_DATABASE_ID`**
+
+## How it runs
+
+`.github/workflows/story_scout.yml` runs daily at 07:00 UTC (`workflow_dispatch` also available for manual testing from the Actions tab — edit the cron line if 07:00 UTC isn't "morning" for you). Each run:
+
+1. Fetches recent entries from the trusted RSS feeds listed in `src/story_scout/sources/feeds.py` — edit that file to add/remove sources, no other code changes needed.
+2. Removes duplicates: exact URL matches and near-duplicate titles across outlets covering the same story.
+3. Skips any story whose URL is already logged in the Notion database, so a story still circulating doesn't get re-added the next day.
+4. Asks Claude to filter the remaining candidates down to what's genuinely relevant and interesting for a marketing LinkedIn audience.
+5. For each relevant story, asks Claude for a summary, a why-it-matters note, and one LinkedIn post angle, then creates the Notion page.
+
+## Local testing
+
+```
+cp .env.example .env   # fill in real values, including NOTION_STORY_DATABASE_ID
+pip install -r requirements.txt
+python -m src.story_scout.main
+```
+
+---
+
 ## Tests
 
 ```
