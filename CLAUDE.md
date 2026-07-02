@@ -13,7 +13,7 @@ A daily morning assistant that scans a Gmail inbox for recruitment/job-related e
 - `google-api-python-client` + `google-auth` for Gmail (OAuth installed-app flow).
 - `httpx` for raw Notion REST API calls (no Notion SDK).
 - `python-dotenv` for local `.env` loading; `PyYAML` for `config/providers.yaml`.
-- `pytest` for tests, run via GitHub Actions (`.github/workflows/hourly_job_emails.yml`) on a daily cron (mornings) plus `workflow_dispatch`.
+- `pytest` for tests, run via GitHub Actions (`.github/workflows/daily_job_email_assistant.yml`) on a daily cron (mornings) plus `workflow_dispatch`.
 
 ## Commands
 

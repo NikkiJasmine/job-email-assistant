@@ -50,7 +50,7 @@ Repo Settings → Secrets and variables → Actions.
 
 ## How it runs
 
-`.github/workflows/hourly_job_emails.yml` runs once a day, at 8:00 AM Stockholm time (`workflow_dispatch` also available for manual testing from the Actions tab). Each run:
+`.github/workflows/daily_job_email_assistant.yml` runs once a day, at 8:00 AM Stockholm time (`workflow_dispatch` also available for manual testing from the Actions tab). Each run:
 
 1. Searches Gmail for job/recruiter-looking emails from the last 2 days.
 2. For each thread, checks Notion for an existing row matching its Gmail thread ID whose stored `Last Processed Message ID` already matches the thread's latest message — if so, skips it (no LLM calls at all). This is the dedup mechanism: it's done via Notion rather than a Gmail label, since managing Gmail labels needs a broader OAuth scope (`gmail.labels`/`gmail.modify`) than this project requests.
