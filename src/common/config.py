@@ -57,6 +57,14 @@ class Config:
     google_client_secret: str
     google_refresh_token: str
     max_emails_per_run: int
+    # Optional: used only when llm_provider == "anthropic", as an automatic
+    # fallback when Anthropic fails with a billing/credit error (see
+    # llm_client.LLMClient). Independent of LLM_PROVIDER -- OPENAI_API_KEY
+    # can be set for this even when OpenAI isn't the primary provider. None
+    # when not configured, in which case a billing error behaves like any
+    # other provider failure (logged to Notion as "Needs AI Review").
+    openai_fallback_api_key: str | None = None
+    openai_fallback_model: str | None = None
 
 
 def load_config() -> Config:
@@ -78,6 +86,8 @@ def load_config() -> Config:
             "GitHub Actions secrets/variables."
         )
 
+    openai_api_key_var, openai_model_var, openai_default_model = _PROVIDER_ENV["openai"]
+
     return Config(
         llm_provider=llm_provider,
         llm_api_key=os.environ[api_key_var],
@@ -88,4 +98,6 @@ def load_config() -> Config:
         google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
         google_refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
         max_emails_per_run=int(os.environ.get("MAX_EMAILS_PER_RUN", "20")),
+        openai_fallback_api_key=os.environ.get(openai_api_key_var) or None,
+        openai_fallback_model=os.environ.get(openai_model_var, openai_default_model),
     )

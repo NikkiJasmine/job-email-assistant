@@ -135,3 +135,56 @@ def test_missing_notion_or_google_vars_raises(monkeypatch):
 
     with pytest.raises(RuntimeError, match="NOTION_TOKEN"):
         config_module.load_config()
+
+
+# --- OpenAI billing-fallback credentials -------------------------------------
+
+
+def test_openai_fallback_is_none_when_not_configured(monkeypatch):
+    _set_env(
+        monkeypatch, LLM_PROVIDER="anthropic", ANTHROPIC_API_KEY="sk-ant-123", OPENAI_API_KEY=None
+    )
+
+    config = config_module.load_config()
+
+    assert config.openai_fallback_api_key is None
+    assert config.openai_fallback_model == "gpt-4o-mini"
+
+
+def test_openai_fallback_is_populated_when_configured(monkeypatch):
+    _set_env(
+        monkeypatch,
+        LLM_PROVIDER="anthropic",
+        ANTHROPIC_API_KEY="sk-ant-123",
+        OPENAI_API_KEY="sk-openai-fallback",
+    )
+
+    config = config_module.load_config()
+
+    assert config.openai_fallback_api_key == "sk-openai-fallback"
+    assert config.openai_fallback_model == "gpt-4o-mini"
+
+
+def test_openai_fallback_model_override(monkeypatch):
+    _set_env(
+        monkeypatch,
+        LLM_PROVIDER="anthropic",
+        ANTHROPIC_API_KEY="sk-ant-123",
+        OPENAI_API_KEY="sk-openai-fallback",
+        OPENAI_MODEL="gpt-4o",
+    )
+
+    config = config_module.load_config()
+
+    assert config.openai_fallback_model == "gpt-4o"
+
+
+def test_openai_fallback_populated_even_when_openai_is_the_primary_provider(monkeypatch):
+    # Harmless/unused in this case (LLMClient only wires up the fallback when
+    # the primary provider is anthropic), but the field should still reflect
+    # whatever OPENAI_API_KEY is set to.
+    _set_env(monkeypatch, LLM_PROVIDER="openai", OPENAI_API_KEY="sk-openai-123")
+
+    config = config_module.load_config()
+
+    assert config.openai_fallback_api_key == "sk-openai-123"

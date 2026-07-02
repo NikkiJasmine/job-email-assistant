@@ -21,6 +21,8 @@ def _fake_config():
             "google_client_secret": "secret",
             "google_refresh_token": "refresh",
             "max_emails_per_run": 20,
+            "openai_fallback_api_key": None,
+            "openai_fallback_model": "gpt-4o-mini",
         },
     )()
 

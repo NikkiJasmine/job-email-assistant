@@ -92,7 +92,13 @@ def run() -> None:
         config.google_client_id, config.google_client_secret, config.google_refresh_token
     )
     notion = notion_client.NotionClient(config.notion_token, config.notion_data_source_id)
-    llm = LLMClient(config.llm_provider, config.llm_api_key, config.llm_model)
+    llm = LLMClient(
+        config.llm_provider,
+        config.llm_api_key,
+        config.llm_model,
+        fallback_openai_api_key=config.openai_fallback_api_key,
+        fallback_openai_model=config.openai_fallback_model,
+    )
 
     thread_ids = gmail_client.search_candidate_threads(gmail, config.max_emails_per_run)
     logger.info("Found %d candidate thread(s) to check", len(thread_ids))

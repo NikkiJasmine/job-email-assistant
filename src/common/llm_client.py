@@ -21,9 +21,18 @@ rate limit, malformed response, ...), every backend method wraps its work in
 a broad try/except and re-raises as LLMProviderError. This gives callers
 (see job_assistant/main.py) a single exception type to catch in order to
 degrade gracefully instead of failing the whole run.
+
+Billing/credit failures specifically (LLMBillingError, a subclass of
+LLMProviderError) get one extra layer of resilience: when the *primary*
+provider is Anthropic and OpenAI fallback credentials are configured,
+LLMClient automatically retries the call against OpenAI before giving up.
+This does not stop the run either way -- if the fallback isn't configured or
+also fails, the error still surfaces as a plain LLMProviderError for
+job_assistant/main.py to handle exactly like any other provider failure.
 """
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -31,6 +40,8 @@ import anthropic
 import openai
 from google import genai
 from google.genai import types as genai_types
+
+logger = logging.getLogger(__name__)
 
 CLASSIFICATIONS = [
     "Interview Invitation",
@@ -114,8 +125,32 @@ class LLMProviderError(RuntimeError):
     """
 
 
+class LLMBillingError(LLMProviderError):
+    """Raised specifically when a provider call fails due to billing (no
+    credits, exceeded quota, payment required, etc), as opposed to some other
+    failure (outage, invalid key, rate limit, malformed response). A subclass
+    of LLMProviderError, so anything that only wants "the AI failed" can
+    catch LLMProviderError as before; LLMClient uses this narrower type to
+    decide when an Anthropic->OpenAI fallback applies.
+    """
+
+
 def _email_user_message(email_text: str) -> str:
     return f"<email>\n{email_text}\n</email>"
+
+
+def _is_anthropic_billing_error(exc: Exception) -> bool:
+    """Anthropic's API reports billing/no-credits failures as error type
+    "billing_error" (see e.g. insufficient credit balance) -- distinguish
+    that from other 4xx errors like "permission_error" that share the same
+    HTTP status code. Also checks the message text as a fallback, in case a
+    given failure surfaces a different error `.type` (or none) but is still
+    clearly a billing/credit issue.
+    """
+    if getattr(exc, "type", None) == "billing_error":
+        return True
+    message = str(exc).lower()
+    return "credit balance" in message or "billing" in message
 
 
 class _LLMBackend(ABC):
@@ -144,6 +179,8 @@ class _AnthropicBackend(_LLMBackend):
             answer = response.content[0].text.strip().upper()
             return answer.startswith("YES")
         except Exception as e:
+            if _is_anthropic_billing_error(e):
+                raise LLMBillingError(f"Anthropic billing/credit error: {e}") from e
             raise LLMProviderError(f"Anthropic relevance check failed: {e}") from e
 
     def analyze_email(self, email_text: str) -> EmailAnalysis:
@@ -165,6 +202,8 @@ class _AnthropicBackend(_LLMBackend):
             tool_use = next(block for block in response.content if block.type == "tool_use")
             return EmailAnalysis(**tool_use.input)
         except Exception as e:
+            if _is_anthropic_billing_error(e):
+                raise LLMBillingError(f"Anthropic billing/credit error: {e}") from e
             raise LLMProviderError(f"Anthropic analysis failed: {e}") from e
 
 
@@ -264,9 +303,25 @@ class LLMClient:
     """Provider-agnostic facade. Construct with the provider name resolved by
     config.load_config() (LLM_PROVIDER) plus that provider's API key/model;
     every provider exposes the same is_job_related/analyze_email interface.
+
+    If the primary provider is Anthropic and OpenAI fallback credentials are
+    given (config.openai_fallback_api_key/model -- optional, independent of
+    LLM_PROVIDER), a billing/credit failure from Anthropic is retried once
+    against OpenAI before giving up. This is deliberately narrow: only
+    billing errors trigger it (not outages/rate limits/etc, which are just
+    as likely on the fallback), and only for the anthropic->openai direction,
+    since that's the pairing this project actually needs -- extend
+    _BACKENDS/this check if a future provider needs the same treatment.
     """
 
-    def __init__(self, provider: str, api_key: str, model: str):
+    def __init__(
+        self,
+        provider: str,
+        api_key: str,
+        model: str,
+        fallback_openai_api_key: str | None = None,
+        fallback_openai_model: str | None = None,
+    ):
         try:
             backend_cls = _BACKENDS[provider]
         except KeyError:
@@ -276,8 +331,25 @@ class LLMClient:
             ) from None
         self._backend = backend_cls(api_key=api_key, model=model)
 
+        self._fallback_backend: _LLMBackend | None = None
+        if provider == "anthropic" and fallback_openai_api_key:
+            self._fallback_backend = _OpenAIBackend(
+                api_key=fallback_openai_api_key, model=fallback_openai_model
+            )
+
+    def _with_billing_fallback(self, call_name: str, *args):
+        try:
+            return getattr(self._backend, call_name)(*args)
+        except LLMBillingError:
+            if self._fallback_backend is None:
+                raise
+            logger.warning(
+                "Anthropic billing/credit error on %s; falling back to OpenAI", call_name
+            )
+            return getattr(self._fallback_backend, call_name)(*args)
+
     def is_job_related(self, email_text: str) -> bool:
-        return self._backend.is_job_related(email_text)
+        return self._with_billing_fallback("is_job_related", email_text)
 
     def analyze_email(self, email_text: str) -> EmailAnalysis:
-        return self._backend.analyze_email(email_text)
+        return self._with_billing_fallback("analyze_email", email_text)

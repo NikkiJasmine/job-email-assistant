@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.common.llm_client import CLASSIFICATIONS, LLMClient, LLMProviderError
+from src.common.llm_client import CLASSIFICATIONS, LLMBillingError, LLMClient, LLMProviderError
 
 _ANALYSIS_DATA = {
     "summary": "A short summary.",
@@ -94,6 +94,132 @@ def test_anthropic_failure_raises_llm_provider_error(mock_anthropic):
         llm.is_job_related("some email")
     with pytest.raises(LLMProviderError):
         llm.analyze_email("some email")
+
+
+# --- Anthropic billing/credit error -> OpenAI fallback -----------------------
+
+
+class _FakeAnthropicError(Exception):
+    """Stands in for an anthropic SDK error exposing a `.type` field."""
+
+    def __init__(self, message: str, error_type: str | None = None):
+        super().__init__(message)
+        self.type = error_type
+
+
+def _billing_error_by_type():
+    return _FakeAnthropicError("insufficient credit balance", error_type="billing_error")
+
+
+def _billing_error_by_message_only():
+    # No `.type` attribute at all -- detection must still work off the message.
+    return RuntimeError("Your credit balance is too low to access the Anthropic API.")
+
+
+@patch("src.common.llm_client.anthropic.Anthropic")
+def test_anthropic_billing_error_without_fallback_configured_raises_llm_billing_error(
+    mock_anthropic,
+):
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = _billing_error_by_type()
+    mock_anthropic.return_value = mock_client
+
+    llm = LLMClient(provider="anthropic", api_key="key", model="claude-sonnet-5")
+    with pytest.raises(LLMBillingError):
+        llm.is_job_related("some email")
+    with pytest.raises(LLMBillingError):
+        llm.analyze_email("some email")
+
+
+@patch("src.common.llm_client.anthropic.Anthropic")
+def test_anthropic_billing_error_detected_from_message_when_no_type_attribute(mock_anthropic):
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = _billing_error_by_message_only()
+    mock_anthropic.return_value = mock_client
+
+    llm = LLMClient(provider="anthropic", api_key="key", model="claude-sonnet-5")
+    with pytest.raises(LLMBillingError):
+        llm.is_job_related("some email")
+
+
+@patch("src.common.llm_client.openai.OpenAI")
+@patch("src.common.llm_client.anthropic.Anthropic")
+def test_anthropic_billing_error_falls_back_to_openai_when_configured(
+    mock_anthropic, mock_openai
+):
+    mock_anthropic_client = MagicMock()
+    mock_anthropic_client.messages.create.side_effect = _billing_error_by_type()
+    mock_anthropic.return_value = mock_anthropic_client
+
+    mock_openai_client = MagicMock()
+    mock_openai_client.chat.completions.create.return_value = _openai_text_response("YES")
+    mock_openai.return_value = mock_openai_client
+
+    llm = LLMClient(
+        provider="anthropic",
+        api_key="anthropic-key",
+        model="claude-sonnet-5",
+        fallback_openai_api_key="openai-key",
+        fallback_openai_model="gpt-4o-mini",
+    )
+
+    assert llm.is_job_related("We'd like to interview you") is True
+    mock_anthropic_client.messages.create.assert_called_once()
+    mock_openai_client.chat.completions.create.assert_called_once()
+    mock_openai.assert_called_once_with(api_key="openai-key")
+
+
+@patch("src.common.llm_client.openai.OpenAI")
+@patch("src.common.llm_client.anthropic.Anthropic")
+def test_anthropic_non_billing_error_does_not_fall_back_even_if_configured(
+    mock_anthropic, mock_openai
+):
+    mock_anthropic_client = MagicMock()
+    mock_anthropic_client.messages.create.side_effect = RuntimeError("connection reset")
+    mock_anthropic.return_value = mock_anthropic_client
+    mock_openai_client = MagicMock()
+    mock_openai.return_value = mock_openai_client
+
+    llm = LLMClient(
+        provider="anthropic",
+        api_key="anthropic-key",
+        model="claude-sonnet-5",
+        fallback_openai_api_key="openai-key",
+        fallback_openai_model="gpt-4o-mini",
+    )
+
+    with pytest.raises(LLMProviderError) as exc_info:
+        llm.is_job_related("some email")
+
+    assert not isinstance(exc_info.value, LLMBillingError)
+    mock_openai_client.chat.completions.create.assert_not_called()
+
+
+@patch("src.common.llm_client.openai.OpenAI")
+@patch("src.common.llm_client.anthropic.Anthropic")
+def test_anthropic_billing_error_propagates_when_openai_fallback_also_fails(
+    mock_anthropic, mock_openai
+):
+    mock_anthropic_client = MagicMock()
+    mock_anthropic_client.messages.create.side_effect = _billing_error_by_type()
+    mock_anthropic.return_value = mock_anthropic_client
+
+    mock_openai_client = MagicMock()
+    mock_openai_client.chat.completions.create.side_effect = RuntimeError("openai also down")
+    mock_openai.return_value = mock_openai_client
+
+    llm = LLMClient(
+        provider="anthropic",
+        api_key="anthropic-key",
+        model="claude-sonnet-5",
+        fallback_openai_api_key="openai-key",
+        fallback_openai_model="gpt-4o-mini",
+    )
+
+    # Still just a plain LLMProviderError -- job_assistant.main handles this
+    # exactly like any other provider failure (flag "Needs AI Review", move on).
+    with pytest.raises(LLMProviderError):
+        llm.is_job_related("some email")
 
 
 # --- OpenAI ------------------------------------------------------------------

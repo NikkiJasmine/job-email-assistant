@@ -44,7 +44,7 @@ The table above is data, not hard-coded logic: it lives in [`config/providers.ya
 
 Repo Settings → Secrets and variables → Actions.
 
-**Secrets:** `NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, plus whichever of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` matches your chosen provider.
+**Secrets:** `NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, plus whichever of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` matches your chosen provider. If `LLM_PROVIDER=anthropic`, also add `OPENAI_API_KEY` if you want the [automatic billing-error fallback](#resilience-to-llm-provider-outages) to actually engage — otherwise a billing/credit error is just handled like any other provider failure.
 
 **Variables:** `LLM_PROVIDER` (default `anthropic`), `CLAUDE_MODEL` / `OPENAI_MODEL` / `GEMINI_MODEL` (whichever applies), `NOTION_DATA_SOURCE_ID`, `MAX_EMAILS_PER_RUN` (default `20`)
 
@@ -72,6 +72,8 @@ The LLM provider is a third-party dependency, and this pipeline is designed so t
 4. Continues on to the remaining emails in the run — one bad provider call never stops the rest.
 
 Rows flagged `Needs AI Review` deliberately do **not** get a `Last Processed Message ID` written, so they're retried against the LLM automatically on every subsequent hourly run (no manual intervention needed) until the provider recovers or the underlying issue (e.g. an expired key) is fixed.
+
+**Automatic Anthropic → OpenAI fallback on billing errors.** If `LLM_PROVIDER=anthropic` and Anthropic specifically fails with a billing/credit error (out of credits, quota exceeded), and `OPENAI_API_KEY` is set (as a secret, independent of `LLM_PROVIDER`), the pipeline automatically retries that call against OpenAI instead of flagging it for review. Other Anthropic failures (outage, invalid key, rate limit) are unaffected and still go through the `Needs AI Review` path above. If `OPENAI_API_KEY` isn't set, or the OpenAI fallback also fails, a billing error is handled exactly like any other provider failure — the run never stops either way.
 
 ## Local testing
 
