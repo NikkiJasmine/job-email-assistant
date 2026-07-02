@@ -2,7 +2,13 @@ name: Hourly Job Email Assistant
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # GitHub Actions cron always runs in UTC -- there's no timezone option.
+    # 06:00 UTC = 08:00 in Stockholm during CEST (late Mar-late Oct). Once
+    # Stockholm falls back to CET (UTC+1) for winter, this runs at 07:00
+    # local instead of 08:00 -- a ~1hr seasonal drift inherent to fixed-UTC
+    # cron. Adjust the hour twice a year around the DST changeovers if exact
+    # 8am year-round matters, or split into two cron lines gated by month.
+    - cron: "0 6 * * *"
   workflow_dispatch: {}
 
 concurrency:
