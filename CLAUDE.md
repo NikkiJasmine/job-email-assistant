@@ -36,6 +36,7 @@ Set `MAX_EMAILS_PER_RUN=2` in `.env` for a small first local test run.
 For each candidate Gmail thread: **dedup check → relevance check → analyze → write to Notion → draft reply in Gmail**.
 
 - Dedup is done via Notion, not Gmail labels — a thread is skipped (no LLM calls at all) if an existing Notion row's `Last Processed Message ID` already matches the thread's latest message. Gmail label-based dedup was deliberately avoided because it needs a broader OAuth scope (`gmail.labels`/`gmail.modify`) than this project requests (readonly + compose only).
+- Thread-id dedup only catches the same Gmail thread reappearing. Before creating a new row (i.e. no thread-id match), `_process_thread` also checks `notion.find_page_by_company_and_role` for an existing row with the same `Company` + `Role / Job Title` and updates that instead — this catches the same application resurfacing on a *different* Gmail thread. Skipped when either field is blank, since matching on an empty string would merge unrelated applications.
 - `run()` never lets one bad thread take down the whole run: `_process_thread` exceptions are caught per-thread and logged, but if **every** candidate thread fails, `run()` raises `RuntimeError` so GitHub Actions reports the run as failed (this is treated as a likely systemic issue — bad credentials, wrong Notion database id — rather than per-email flukes).
 
 ### Provider-agnostic LLM layer (`src/common/llm_client.py`)

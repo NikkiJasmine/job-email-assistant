@@ -191,13 +191,74 @@ def test_process_thread_succeeds_normally_when_llm_works(mock_get_thread, mock_c
     mock_get_thread.return_value = _fake_thread()
     notion = MagicMock()
     notion.find_page_by_thread_id.return_value = None
+    notion.find_page_by_company_and_role.return_value = None
     llm = MagicMock()
     llm.is_job_related.return_value = True
     llm.analyze_email.return_value = _fake_analysis()
 
     main._process_thread(gmail=MagicMock(), notion=notion, llm=llm, thread_id="t1")
 
+    notion.find_page_by_company_and_role.assert_called_once_with("Acme", "Engineer")
     notion.create_page.assert_called_once()
     (properties,) = notion.create_page.call_args[0]
     assert properties["Status"] == {"select": {"name": "Next Step"}}
     mock_create_draft.assert_called_once()
+
+
+# --- _process_thread: fallback dedup by Company + Role / Job Title ----------
+
+
+@patch("src.job_assistant.main.gmail_client.create_draft_reply")
+@patch("src.job_assistant.main.gmail_client.get_thread")
+def test_process_thread_updates_existing_application_matched_by_company_and_role(
+    mock_get_thread, mock_create_draft
+):
+    """A new Gmail thread for an application already tracked under a different
+    thread (e.g. a recruiter starting a fresh subject line) should update the
+    existing Notion row instead of creating a duplicate.
+    """
+    mock_get_thread.return_value = _fake_thread(thread_id="t2", message_id="m2")
+    notion = MagicMock()
+    notion.find_page_by_thread_id.return_value = None  # no match on this thread id
+    company_role_match = type(
+        "ExistingPage", (), {"page_id": "page-789", "last_processed_message_id": "old-msg"}
+    )()
+    notion.find_page_by_company_and_role.return_value = company_role_match
+    llm = MagicMock()
+    llm.is_job_related.return_value = True
+    llm.analyze_email.return_value = _fake_analysis()
+
+    main._process_thread(gmail=MagicMock(), notion=notion, llm=llm, thread_id="t2")
+
+    notion.find_page_by_company_and_role.assert_called_once_with("Acme", "Engineer")
+    notion.update_page.assert_called_once()
+    page_id, properties = notion.update_page.call_args[0]
+    assert page_id == "page-789"
+    # Updated, not a new application -- Track/Category shouldn't be (re)stamped.
+    assert "Track" not in properties
+    assert "Category" not in properties
+    notion.create_page.assert_not_called()
+    mock_create_draft.assert_called_once()
+
+
+@patch("src.job_assistant.main.gmail_client.create_draft_reply")
+@patch("src.job_assistant.main.gmail_client.get_thread")
+def test_process_thread_skips_company_role_lookup_when_company_missing(
+    mock_get_thread, mock_create_draft
+):
+    """Matching on an empty Company/Role would silently merge unrelated
+    applications, so the fallback lookup must not run when either is blank.
+    """
+    mock_get_thread.return_value = _fake_thread()
+    notion = MagicMock()
+    notion.find_page_by_thread_id.return_value = None
+    llm = MagicMock()
+    llm.is_job_related.return_value = True
+    analysis = _fake_analysis()
+    analysis.company = ""
+    llm.analyze_email.return_value = analysis
+
+    main._process_thread(gmail=MagicMock(), notion=notion, llm=llm, thread_id="t1")
+
+    notion.find_page_by_company_and_role.assert_not_called()
+    notion.create_page.assert_called_once()

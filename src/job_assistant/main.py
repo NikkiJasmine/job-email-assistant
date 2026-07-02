@@ -158,6 +158,23 @@ def _process_thread(gmail, notion, llm, thread_id: str) -> None:
 
     logger.info("Thread %s classified as %s", thread_id, analysis.classification)
 
+    # Fallback dedup: a thread-id match means we've already seen *this*
+    # Gmail thread, but the same application can resurface on a different
+    # thread (e.g. a recruiter starting a fresh subject line instead of
+    # replying inline). Before creating a new row, also check for an
+    # existing record with the same Company + Role / Job Title and update
+    # that instead of creating a duplicate. Skipped when either is blank --
+    # matching on an empty Company/Role would merge unrelated applications.
+    if existing_page is None and analysis.company and analysis.role:
+        existing_page = notion.find_page_by_company_and_role(analysis.company, analysis.role)
+        if existing_page:
+            logger.info(
+                "Thread %s matched existing application for %s / %s by Company + Role",
+                thread_id,
+                analysis.company,
+                analysis.role,
+            )
+
     properties = _build_notion_properties(thread, analysis, is_new_row=existing_page is None)
 
     if existing_page:
