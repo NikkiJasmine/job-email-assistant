@@ -88,16 +88,23 @@ def load_config() -> Config:
 
     openai_api_key_var, openai_model_var, openai_default_model = _PROVIDER_ENV["openai"]
 
+    # Credential values are stripped of surrounding whitespace before use.
+    # GitHub Secrets (and copy/paste in general) can silently pick up a
+    # trailing newline or space -- invisible to a human eye, but a client_id/
+    # client_secret/refresh_token with stray whitespace no longer matches the
+    # value Google actually issued, and surfaces as an auth failure (e.g.
+    # google.auth.exceptions.RefreshError: unauthorized_client) that looks
+    # exactly like a genuinely wrong/mismatched credential.
     return Config(
         llm_provider=llm_provider,
-        llm_api_key=os.environ[api_key_var],
-        llm_model=os.environ.get(model_var, default_model),
-        notion_token=os.environ["NOTION_TOKEN"],
-        notion_data_source_id=os.environ["NOTION_DATA_SOURCE_ID"],
-        google_client_id=os.environ["GOOGLE_CLIENT_ID"],
-        google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
-        google_refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
+        llm_api_key=os.environ[api_key_var].strip(),
+        llm_model=os.environ.get(model_var, default_model).strip(),
+        notion_token=os.environ["NOTION_TOKEN"].strip(),
+        notion_data_source_id=os.environ["NOTION_DATA_SOURCE_ID"].strip(),
+        google_client_id=os.environ["GOOGLE_CLIENT_ID"].strip(),
+        google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"].strip(),
+        google_refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"].strip(),
         max_emails_per_run=int(os.environ.get("MAX_EMAILS_PER_RUN", "20")),
-        openai_fallback_api_key=os.environ.get(openai_api_key_var) or None,
-        openai_fallback_model=os.environ.get(openai_model_var, openai_default_model),
+        openai_fallback_api_key=(os.environ.get(openai_api_key_var) or "").strip() or None,
+        openai_fallback_model=os.environ.get(openai_model_var, openai_default_model).strip(),
     )

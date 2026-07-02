@@ -188,3 +188,56 @@ def test_openai_fallback_populated_even_when_openai_is_the_primary_provider(monk
     config = config_module.load_config()
 
     assert config.openai_fallback_api_key == "sk-openai-123"
+
+
+# --- Credential values are stripped of surrounding whitespace ---------------
+#
+# GitHub Secrets (and copy/paste generally) can silently pick up a trailing
+# newline or space when a value is re-typed or split across secrets by hand
+# -- invisible to a human, but Google (and any other credential consumer)
+# sees a different string than what was actually issued, surfacing as an
+# auth failure that looks exactly like a genuinely wrong credential.
+
+
+def test_google_credentials_are_stripped_of_whitespace(monkeypatch):
+    _set_env(
+        monkeypatch,
+        ANTHROPIC_API_KEY="sk-ant-123",
+        GOOGLE_CLIENT_ID="  client-id-with-space \n",
+        GOOGLE_CLIENT_SECRET="client-secret\n",
+        GOOGLE_REFRESH_TOKEN="\trefresh-token",
+    )
+
+    config = config_module.load_config()
+
+    assert config.google_client_id == "client-id-with-space"
+    assert config.google_client_secret == "client-secret"
+    assert config.google_refresh_token == "refresh-token"
+
+
+def test_llm_api_key_and_model_are_stripped_of_whitespace(monkeypatch):
+    _set_env(
+        monkeypatch,
+        LLM_PROVIDER="anthropic",
+        ANTHROPIC_API_KEY=" sk-ant-123\n",
+        CLAUDE_MODEL="claude-sonnet-5 \n",
+    )
+
+    config = config_module.load_config()
+
+    assert config.llm_api_key == "sk-ant-123"
+    assert config.llm_model == "claude-sonnet-5"
+
+
+def test_openai_fallback_credentials_are_stripped_of_whitespace(monkeypatch):
+    _set_env(
+        monkeypatch,
+        ANTHROPIC_API_KEY="sk-ant-123",
+        OPENAI_API_KEY=" sk-openai-fallback\n",
+        OPENAI_MODEL="gpt-4o \n",
+    )
+
+    config = config_module.load_config()
+
+    assert config.openai_fallback_api_key == "sk-openai-fallback"
+    assert config.openai_fallback_model == "gpt-4o"
