@@ -50,3 +50,6 @@ Subject: <specific subject line>
 
 If asked for a LinkedIn message instead of/in addition to an email, keep it shorter (LinkedIn's
 connection-note length norms) and note it's for LinkedIn explicitly.
+
+After drafting, mention that the Career CRM Agent can log the sent version (and the follow-up
+date) once the user has actually sent it -- you draft, you don't log or send.
