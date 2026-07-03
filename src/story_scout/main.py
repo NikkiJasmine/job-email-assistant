@@ -1,10 +1,10 @@
-"""Daily pipeline: RSS feeds -> dedup -> relevance filter -> generate -> Notion."""
+"""Daily pipeline: RSS feeds -> dedup -> relevance filter -> generate -> Notion -> notify."""
 
 import datetime
 import logging
 
-from src.common import notion_client
-from src.story_scout import dedup, notion_writer
+from src.common import gmail_client, notion_client
+from src.story_scout import dedup, notifier, notion_writer
 from src.story_scout.config import load_config
 from src.story_scout.llm import StoryScoutLLM
 from src.story_scout.models import ScoutedStory
@@ -40,22 +40,33 @@ def run() -> None:
     logger.info("%d stor(y/ies) judged relevant for the LinkedIn audience", len(relevant))
 
     failure_count = 0
-    written_count = 0
+    written_stories = []
     for raw in relevant:
         try:
             package = llm.generate_package(raw)
-            properties = notion_writer.build_properties(ScoutedStory(raw=raw, package=package))
-            notion.create_page(properties)
-            written_count += 1
+            scouted = ScoutedStory(raw=raw, package=package)
+            notion.create_page(notion_writer.build_properties(scouted))
+            written_stories.append(scouted)
         except Exception:
             failure_count += 1
             logger.exception("Failed generating/writing story %r; will retry next run", raw.url)
 
-    logger.info("Run complete: %d story(ies) written, %d failed", written_count, failure_count)
-    # If every relevant story failed, that's very unlikely to be a batch of
-    # unrelated per-story flukes -- it's much more likely a systemic problem
-    # (bad credentials, wrong Notion database id, etc). Fail loudly so GitHub
-    # Actions reports the run as failed.
+    logger.info("Run complete: %d story(ies) written, %d failed", len(written_stories), failure_count)
+
+    try:
+        gmail = gmail_client.build_service(
+            config.google_client_id, config.google_client_secret, config.google_refresh_token
+        )
+        notifier.send_digest_email(gmail, config.notify_email, written_stories)
+    except Exception:
+        # Notion is already up to date at this point -- a notification failure
+        # shouldn't be treated as a run failure, just logged.
+        logger.exception("Failed sending digest email; stories are still saved in Notion")
+
+    # If every relevant story failed to save, that's very unlikely to be a
+    # batch of unrelated per-story flukes -- it's much more likely a systemic
+    # problem (bad credentials, wrong Notion database id, etc). Fail loudly so
+    # GitHub Actions reports the run as failed.
     if relevant and failure_count == len(relevant):
         raise RuntimeError(
             f"All {failure_count} relevant stor(y/ies) failed to process -- "

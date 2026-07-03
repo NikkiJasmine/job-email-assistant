@@ -51,8 +51,8 @@ def test_generate_package_returns_story_package(mock_anthropic):
     mock_client.messages.create.return_value = _tool_response(
         {
             "summary": "A summary.",
-            "why_it_matters": "It matters because...",
-            "linkedin_post_angle": "Here's a hook.",
+            "key_lessons": "Lead with the data.",
+            "linkedin_post_ideas": ["Hook one.", "Hook two.", "Hook three."],
         }
     )
     mock_anthropic.return_value = mock_client
@@ -61,14 +61,15 @@ def test_generate_package_returns_story_package(mock_anthropic):
     package = llm.generate_package(_story())
 
     assert package.summary == "A summary."
-    assert package.linkedin_post_angle == "Here's a hook."
+    assert package.key_lessons == "Lead with the data."
+    assert package.linkedin_post_ideas == ["Hook one.", "Hook two.", "Hook three."]
 
 
 @patch("src.story_scout.llm.anthropic.Anthropic")
 def test_generate_package_treats_story_as_untrusted_data(mock_anthropic):
     mock_client = MagicMock()
     mock_client.messages.create.return_value = _tool_response(
-        {"summary": "s", "why_it_matters": "w", "linkedin_post_angle": "a"}
+        {"summary": "s", "key_lessons": "k", "linkedin_post_ideas": ["a", "b", "c"]}
     )
     mock_anthropic.return_value = mock_client
 

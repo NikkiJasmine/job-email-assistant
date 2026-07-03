@@ -23,6 +23,10 @@ def build_properties(story: ScoutedStory) -> dict:
         "Published Date": notion_client.date_prop(raw.published_at.isoformat() if raw.published_at else None),
         "Date Added": notion_client.date_prop(datetime.date.today().isoformat()),
         "Summary": notion_client.text_prop(package.summary),
-        "Why It Matters": notion_client.text_prop(package.why_it_matters),
-        "LinkedIn Post Angle": notion_client.text_prop(package.linkedin_post_angle),
+        "Key Lessons": notion_client.text_prop(package.key_lessons),
+        "LinkedIn Post Ideas": notion_client.text_prop(_format_post_ideas(package.linkedin_post_ideas)),
     }
+
+
+def _format_post_ideas(ideas: list[str]) -> str:
+    return "\n".join(f"{i + 1}. {idea}" for i, idea in enumerate(ideas))

@@ -31,4 +31,8 @@ jobs:
           CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_STORY_DATABASE_ID: ${{ vars.NOTION_STORY_DATABASE_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          STORY_SCOUT_NOTIFY_EMAIL: ${{ vars.STORY_SCOUT_NOTIFY_EMAIL }}
         run: python -m src.story_scout.main

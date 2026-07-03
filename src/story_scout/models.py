@@ -17,8 +17,8 @@ class RawStory:
 @dataclass
 class StoryPackage:
     summary: str
-    why_it_matters: str
-    linkedin_post_angle: str
+    key_lessons: str
+    linkedin_post_ideas: list[str]
 
 
 @dataclass

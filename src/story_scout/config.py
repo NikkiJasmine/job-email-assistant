@@ -1,10 +1,11 @@
 """Loads and validates environment configuration for the Story Scout AI module.
 
 Deliberately independent from src/common/config.py's load_config(), which is
-wired specifically to the Job Email Assistant (Gmail/Google credentials,
-NOTION_DATA_SOURCE_ID for the job-search CRM database). Story Scout needs
-neither Gmail credentials nor that database id, and adding its vars to the
-shared loader would force unrelated env vars onto both modules.
+wired specifically to the Job Email Assistant's own database id
+(NOTION_DATA_SOURCE_ID for the job-search CRM). Story Scout uses a different
+Notion database, so it needs its own id var -- but it reuses the same Google
+OAuth credentials (to send its notification email) since both modules share
+one Gmail account and one OAuth consent grant.
 """
 
 import os
@@ -18,6 +19,10 @@ _REQUIRED_VARS = [
     "ANTHROPIC_API_KEY",
     "NOTION_TOKEN",
     "NOTION_STORY_DATABASE_ID",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REFRESH_TOKEN",
+    "STORY_SCOUT_NOTIFY_EMAIL",
 ]
 
 
@@ -27,6 +32,10 @@ class Config:
     claude_model: str
     notion_token: str
     notion_story_database_id: str
+    google_client_id: str
+    google_client_secret: str
+    google_refresh_token: str
+    notify_email: str
     lookback_days: int
 
 
@@ -44,6 +53,10 @@ def load_config() -> Config:
         claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5"),
         notion_token=os.environ["NOTION_TOKEN"],
         notion_story_database_id=os.environ["NOTION_STORY_DATABASE_ID"],
+        google_client_id=os.environ["GOOGLE_CLIENT_ID"],
+        google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+        google_refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
+        notify_email=os.environ["STORY_SCOUT_NOTIFY_EMAIL"],
         # Daily run with a 1-day buffer so a delayed/failed run doesn't create a gap.
         lookback_days=int(os.environ.get("STORY_SCOUT_LOOKBACK_DAYS", "2")),
     )

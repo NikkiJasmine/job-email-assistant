@@ -65,7 +65,7 @@ Set `MAX_EMAILS_PER_RUN=2` in `.env` for a small first test run.
 
 # Story Scout AI
 
-Daily assistant that scans trusted marketing, AI, branding, creator-economy, advertising, PR, social-media, and consumer-behavior RSS feeds, dedupes them, filters for relevance to a marketing LinkedIn audience, and logs each story to its own Notion database with a summary, a why-it-matters note, and a LinkedIn post angle. Runs on GitHub Actions every morning; no server to maintain.
+Daily assistant that scans trusted marketing, AI, branding, creator-economy, advertising, PR, social-media, and consumer-behavior RSS feeds, dedupes them, filters for relevance to a marketing LinkedIn audience, and logs each story to its own Notion database with a summary, the key lesson(s), and three LinkedIn post ideas. Sends you a digest email when it's done. Runs on GitHub Actions every morning; no server to maintain.
 
 This is **Phase 1** (collect stories → Notion). Later phases — ranking stories by interest, multiple post angles, drafted posts, non-RSS sources like Instagram/TikTok/Reddit — build on the same pipeline without changing this phase's code; see `src/story_scout/sources/base.py`'s `Source` protocol for the extension point new discovery sources plug into.
 
@@ -82,8 +82,8 @@ This is **Phase 1** (collect stories → Notion). Later phases — ranking stori
    - `Published Date` (date)
    - `Date Added` (date)
    - `Summary` (text)
-   - `Why It Matters` (text)
-   - `LinkedIn Post Angle` (text)
+   - `Key Lessons` (text)
+   - `LinkedIn Post Ideas` (text) — 3 numbered ideas in one field
 3. Open the database → `...` menu → **Connections** → add the integration.
 4. Copy the database's own page UUID from its Notion URL for `NOTION_STORY_DATABASE_ID` below (not a data source UUID — see the caveat comment next to `NOTION_DATA_SOURCE_ID` in `.env.example`, same gotcha applies here).
 
@@ -91,13 +91,17 @@ This is **Phase 1** (collect stories → Notion). Later phases — ranking stori
 
 Reuses the same `ANTHROPIC_API_KEY` as the Job Email Assistant.
 
-### 3. GitHub repository secrets & variables
+### 3. Gmail (for the digest notification)
+
+Reuses the same Google OAuth credentials (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN`) already set up for the Job Email Assistant — no new consent flow needed, since the `gmail.compose` scope it already requests permits sending. Set `STORY_SCOUT_NOTIFY_EMAIL` to whatever address should receive the daily digest (typically your own).
+
+### 4. GitHub repository secrets & variables
 
 Repo Settings → Secrets and variables → Actions.
 
-**Secrets:** `ANTHROPIC_API_KEY`, `NOTION_TOKEN` (both already set if you've set up the Job Email Assistant)
+**Secrets:** `ANTHROPIC_API_KEY`, `NOTION_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (all already set if you've set up the Job Email Assistant)
 
-**Variables:** `CLAUDE_MODEL` (already set), plus new **`NOTION_STORY_DATABASE_ID`**
+**Variables:** `CLAUDE_MODEL` (already set), plus new **`NOTION_STORY_DATABASE_ID`** and **`STORY_SCOUT_NOTIFY_EMAIL`**
 
 ## How it runs
 
@@ -107,7 +111,10 @@ Repo Settings → Secrets and variables → Actions.
 2. Removes duplicates: exact URL matches and near-duplicate titles across outlets covering the same story.
 3. Skips any story whose URL is already logged in the Notion database, so a story still circulating doesn't get re-added the next day.
 4. Asks Claude to filter the remaining candidates down to what's genuinely relevant and interesting for a marketing LinkedIn audience.
-5. For each relevant story, asks Claude for a summary, a why-it-matters note, and one LinkedIn post angle, then creates the Notion page.
+5. For each relevant story, asks Claude for a summary, the key lesson(s), and three LinkedIn post ideas, then creates the Notion page.
+6. Emails `STORY_SCOUT_NOTIFY_EMAIL` a digest of everything added this run (skipped if nothing new was added). A failed email never blocks the Notion writes — they're already saved by the time it sends.
+
+Note: this notification step does call a send-capable Gmail API method, unlike the Job Email Assistant's `common/gmail_client.py`, which deliberately never does (see that file's docstring). The distinction: this always emails *you*, never a third party, so it's a different, much lower-risk action than auto-sending a reply on your behalf. That send-capable code is confined to `src/story_scout/notifier.py`.
 
 ## Local testing
 
@@ -116,6 +123,23 @@ cp .env.example .env   # fill in real values, including NOTION_STORY_DATABASE_ID
 pip install -r requirements.txt
 python -m src.story_scout.main
 ```
+
+## Adding a story by hand (Instagram, TikTok, anything without an RSS feed)
+
+Instagram and TikTok don't offer public content discovery the way RSS does for news sites -- their APIs are built for managing your own account, not searching what other creators post, and scraping around that would mean fighting their bot detection and their Terms of Service. So there's no automated source for them.
+
+Instead, when you spot something worth including yourself, feed it in directly:
+
+```
+python -m src.story_scout.manual_entry \
+  --url "https://www.instagram.com/p/abc123/" \
+  --title "Silence, brand: the shift from funny to fatigued" \
+  --source "Instagram (@girlsinmarketing)" \
+  --category "Social Media" \
+  --text "Paste the caption, transcript, or a description of the post here."
+```
+
+This skips the relevance filter (you already decided it's worth including) and runs the same summary / key-lessons / LinkedIn-ideas generation as the daily pipeline, saving straight into the same Notion database. It also skips anything whose URL is already logged, so re-running is safe.
 
 ---
 
