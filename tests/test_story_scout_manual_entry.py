@@ -21,23 +21,39 @@ def _args(**overrides):
         url="https://www.instagram.com/p/abc123/",
         title="Silence, brand",
         source="Instagram (@girlsinmarketing)",
-        category="Social Media",
+        platform="Instagram",
         text="Caption text pasted in by hand.",
+        comments="",
     )
     defaults.update(overrides)
-    return _parse_args(
-        [
-            "--url",
-            defaults["url"],
-            "--title",
-            defaults["title"],
-            "--source",
-            defaults["source"],
-            "--category",
-            defaults["category"],
-            "--text",
-            defaults["text"],
-        ]
+    argv = [
+        "--url",
+        defaults["url"],
+        "--title",
+        defaults["title"],
+        "--source",
+        defaults["source"],
+        "--platform",
+        defaults["platform"],
+        "--text",
+        defaults["text"],
+    ]
+    if defaults["comments"]:
+        argv += ["--comments", defaults["comments"]]
+    return _parse_args(argv)
+
+
+def _package_mock():
+    return MagicMock(
+        brand="Brand A",
+        topic="Social Media Strategy",
+        summary="s",
+        why_it_matters="w",
+        public_reaction="No public comment data was available for this source.",
+        marketing_lesson="m",
+        linkedin_post_angles=["a", "b", "c"],
+        score=None,
+        score_reason="",
     )
 
 
@@ -47,9 +63,7 @@ def _args(**overrides):
 def test_add_story_creates_notion_page(mock_notion_cls, mock_already_logged, mock_llm_cls):
     mock_already_logged.return_value = False
     mock_llm = MagicMock()
-    mock_llm.generate_package.return_value = MagicMock(
-        summary="s", key_lessons="k", linkedin_post_ideas=["a", "b", "c"]
-    )
+    mock_llm.generate_package.return_value = _package_mock()
     mock_llm_cls.return_value = mock_llm
     mock_notion = MagicMock()
     mock_notion_cls.return_value = mock_notion
@@ -58,6 +72,22 @@ def test_add_story_creates_notion_page(mock_notion_cls, mock_already_logged, moc
 
     mock_llm.generate_package.assert_called_once()
     mock_notion.create_page.assert_called_once()
+
+
+@patch("src.story_scout.manual_entry.StoryScoutLLM")
+@patch("src.story_scout.manual_entry.notion_writer.already_logged")
+@patch("src.story_scout.manual_entry.notion_client.NotionClient")
+def test_add_story_passes_pasted_comments_through(mock_notion_cls, mock_already_logged, mock_llm_cls):
+    mock_already_logged.return_value = False
+    mock_llm = MagicMock()
+    mock_llm.generate_package.return_value = _package_mock()
+    mock_llm_cls.return_value = mock_llm
+    mock_notion_cls.return_value = MagicMock()
+
+    add_story(_fake_config(), _args(comments="Someone said this was tone-deaf."))
+
+    _, kwargs = mock_llm.generate_package.call_args
+    assert kwargs["comments_text"] == "Someone said this was tone-deaf."
 
 
 @patch("src.story_scout.manual_entry.StoryScoutLLM")

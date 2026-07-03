@@ -1,22 +1,26 @@
 """Manually submit one story into the Story Scout AI Notion database.
 
-Instagram and TikTok don't offer public content discovery the way RSS does
-for news sites (see README's "Story Scout AI" section) -- there's no
-automated source for them. This is the practical alternative: you paste in
-a story you found by hand (its URL plus whatever caption/transcript/text is
-worth summarizing), and it runs through the same summarize / key-lessons /
-LinkedIn-ideas pipeline as the daily RSS run, landing in the same database.
+Instagram, TikTok, and LinkedIn don't offer public content discovery the way
+RSS/Reddit/YouTube do (see README's "Story Scout AI" section) -- there's no
+legitimate automated source for them. This is the practical alternative: you
+paste in a story you found by hand (its URL, platform, and whatever
+caption/transcript/text is worth summarizing), and it runs through the same
+brand/topic/summary/reaction/lesson/LinkedIn-angles generation as the
+scheduled pipeline, landing in the same database. Comments/public reaction
+are only included if you paste them in via --comments -- this script never
+invents them.
 
-Skips the LLM relevance filter (you already decided it's worth including)
-and skips it if the URL is already logged, same as the daily pipeline.
+Skips the LLM scoring step (you already decided it's worth including) and
+skips it if the URL is already logged, same as the scheduled pipeline.
 
 Usage:
     python -m src.story_scout.manual_entry \
         --url "https://www.instagram.com/p/abc123/" \
         --title "Silence, brand: the shift from funny to fatigued" \
         --source "Instagram (@girlsinmarketing)" \
-        --category "Social Media" \
-        --text "Caption/transcript/description of the post, pasted in by hand."
+        --platform "Instagram" \
+        --text "Caption/transcript/description of the post, pasted in by hand." \
+        --comments "Optional: paste real comment text here if you have it."
 """
 
 import argparse
@@ -38,9 +42,12 @@ def _parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--url", required=True, help="Link to the original post/article.")
     parser.add_argument("--title", required=True, help="Short title/headline for the story.")
     parser.add_argument("--source", required=True, help='Where it came from, e.g. "Instagram (@girlsinmarketing)".')
-    parser.add_argument("--category", required=True, help="e.g. Marketing, AI, Branding, Social Media, ...")
+    parser.add_argument("--platform", required=True, help="e.g. Instagram, TikTok, LinkedIn, Reddit, YouTube, ...")
     parser.add_argument(
         "--text", required=True, help="Caption/transcript/description -- whatever text there is to summarize."
+    )
+    parser.add_argument(
+        "--comments", default="", help="Optional: real comment text you observed, for the public-reaction field."
     )
     return parser.parse_args(argv)
 
@@ -55,14 +62,14 @@ def add_story(config, args: argparse.Namespace) -> None:
     llm = StoryScoutLLM(api_key=config.anthropic_api_key, model=config.claude_model)
     raw = RawStory(
         source_name=args.source,
-        category=args.category,
+        platform=args.platform,
         title=args.title,
         url=args.url,
         published_at=datetime.date.today(),
         text=f"{args.title}\n\n{args.text}",
     )
 
-    package = llm.generate_package(raw)
+    package = llm.generate_package(raw, comments_text=args.comments)
     notion.create_page(notion_writer.build_properties(ScoutedStory(raw=raw, package=package)))
     logger.info("Added to Notion: %s", args.title)
 

@@ -6,6 +6,10 @@ wired specifically to the Job Email Assistant's own database id
 Notion database, so it needs its own id var -- but it reuses the same Google
 OAuth credentials (to send its notification email) since both modules share
 one Gmail account and one OAuth consent grant.
+
+REDDIT_CLIENT_ID/SECRET and YOUTUBE_API_KEY are optional: those sources are
+skipped (not a hard failure) when unset, so the pipeline runs on RSS alone
+until you add them -- see sources/__init__.py.
 """
 
 import os
@@ -36,7 +40,12 @@ class Config:
     google_client_secret: str
     google_refresh_token: str
     notify_email: str
+    recipient_name: str
     lookback_days: int
+    top_n: int
+    reddit_client_id: str
+    reddit_client_secret: str
+    youtube_api_key: str
 
 
 def load_config() -> Config:
@@ -57,6 +66,11 @@ def load_config() -> Config:
         google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
         google_refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
         notify_email=os.environ["STORY_SCOUT_NOTIFY_EMAIL"],
-        # Daily run with a 1-day buffer so a delayed/failed run doesn't create a gap.
-        lookback_days=int(os.environ.get("STORY_SCOUT_LOOKBACK_DAYS", "2")),
+        recipient_name=os.environ.get("STORY_SCOUT_RECIPIENT_NAME", "you"),
+        # Every-3-days run with a 1-day buffer so a delayed/failed run doesn't create a gap.
+        lookback_days=int(os.environ.get("STORY_SCOUT_LOOKBACK_DAYS", "4")),
+        top_n=int(os.environ.get("STORY_SCOUT_TOP_N", "5")),
+        reddit_client_id=os.environ.get("REDDIT_CLIENT_ID", ""),
+        reddit_client_secret=os.environ.get("REDDIT_CLIENT_SECRET", ""),
+        youtube_api_key=os.environ.get("YOUTUBE_API_KEY", ""),
     )

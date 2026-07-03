@@ -1,4 +1,4 @@
-"""Sends a digest email of the stories Story Scout added to Notion this run.
+"""Sends the Story Scout digest report email.
 
 Reuses src/common/gmail_client.build_service for OAuth setup only. Unlike
 that module, this one does call a send-capable Gmail API method
@@ -16,28 +16,14 @@ from email.mime.text import MIMEText
 from src.story_scout.models import ScoutedStory
 
 
-def _story_section(story: ScoutedStory) -> str:
-    raw, package = story.raw, story.package
-    ideas = "\n".join(f"  {i + 1}. {idea}" for i, idea in enumerate(package.linkedin_post_ideas))
-    return (
-        f"{raw.title}\n"
-        f"{raw.url}\n"
-        f"{raw.source_name} | {raw.category}\n\n"
-        f"Summary: {package.summary}\n\n"
-        f"Key lessons: {package.key_lessons}\n\n"
-        f"LinkedIn post ideas:\n{ideas}"
-    )
-
-
-def send_digest_email(service, to_email: str, stories: list[ScoutedStory]) -> None:
-    """Sends one email listing every story added this run. No-op if none were added."""
+def send_digest_email(service, to_email: str, report_text: str, stories: list[ScoutedStory]) -> None:
+    """Sends the digest report. No-op if there are no stories to report."""
     if not stories:
         return
 
-    subject = f"Story Scout: {len(stories)} new stor{'y' if len(stories) == 1 else 'ies'} for LinkedIn"
-    body = "\n\n---\n\n".join(_story_section(story) for story in stories)
+    subject = f"Story Scout: top {len(stories)} stor{'y' if len(stories) == 1 else 'ies'} for LinkedIn"
 
-    message = MIMEText(body)
+    message = MIMEText(report_text)
     message["to"] = to_email
     message["subject"] = subject
 

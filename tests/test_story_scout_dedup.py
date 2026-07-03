@@ -4,10 +4,10 @@ from src.story_scout.dedup import remove_duplicates
 from src.story_scout.models import RawStory
 
 
-def _story(title, url, source="Source A", category="Marketing"):
+def _story(title, url, source="Source A"):
     return RawStory(
         source_name=source,
-        category=category,
+        platform="RSS",
         title=title,
         url=url,
         published_at=datetime.date(2026, 7, 1),

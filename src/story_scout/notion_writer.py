@@ -1,6 +1,5 @@
 """Builds Notion page properties for a scouted story and checks for
-already-logged URLs so daily runs don't re-add a story still circulating
-within the lookback window.
+already-logged URLs so repeat runs don't re-add a story still circulating.
 """
 
 import datetime
@@ -17,16 +16,21 @@ def build_properties(story: ScoutedStory) -> dict:
     raw, package = story.raw, story.package
     return {
         "Name": notion_client.title_prop(raw.title),
+        "Brand": notion_client.text_prop(package.brand),
+        "Platform": notion_client.select_prop(raw.platform),
+        "Topic": notion_client.select_prop(package.topic),
         "URL": notion_client.url_prop(raw.url),
         "Source": notion_client.text_prop(raw.source_name),
-        "Category": notion_client.select_prop(raw.category),
         "Published Date": notion_client.date_prop(raw.published_at.isoformat() if raw.published_at else None),
         "Date Added": notion_client.date_prop(datetime.date.today().isoformat()),
+        "Score": notion_client.number_prop(package.score),
         "Summary": notion_client.text_prop(package.summary),
-        "Key Lessons": notion_client.text_prop(package.key_lessons),
-        "LinkedIn Post Ideas": notion_client.text_prop(_format_post_ideas(package.linkedin_post_ideas)),
+        "Why It Matters": notion_client.text_prop(package.why_it_matters),
+        "Public Reaction": notion_client.text_prop(package.public_reaction),
+        "Marketing Lesson": notion_client.text_prop(package.marketing_lesson),
+        "LinkedIn Post Angles": notion_client.text_prop(_format_post_angles(package.linkedin_post_angles)),
     }
 
 
-def _format_post_ideas(ideas: list[str]) -> str:
-    return "\n".join(f"{i + 1}. {idea}" for i, idea in enumerate(ideas))
+def _format_post_angles(angles: list[str]) -> str:
+    return "\n".join(f"{i + 1}. {angle}" for i, angle in enumerate(angles))

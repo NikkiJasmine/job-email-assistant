@@ -13,9 +13,8 @@ _MAX_ENTRIES_PER_FEED = 30
 
 
 class RSSSource:
-    def __init__(self, name: str, category: str, feed_url: str):
+    def __init__(self, name: str, feed_url: str):
         self.name = name
-        self.category = category
         self.feed_url = feed_url
 
     def fetch_recent(self, since: datetime.date) -> list[RawStory]:
@@ -39,7 +38,7 @@ class RSSSource:
             stories.append(
                 RawStory(
                     source_name=self.name,
-                    category=self.category,
+                    platform="RSS",
                     title=title,
                     url=url,
                     published_at=published,

@@ -32,11 +32,11 @@ def test_fetch_recent_filters_by_published_date(mock_parse):
         ],
     )
 
-    source = RSSSource("Test Feed", "Marketing", "https://a.com/feed")
+    source = RSSSource("Test Feed", "https://a.com/feed")
     stories = source.fetch_recent(since=datetime.date(2026, 6, 30))
 
     assert [s.title for s in stories] == ["Recent story"]
-    assert stories[0].category == "Marketing"
+    assert stories[0].platform == "RSS"
     assert stories[0].source_name == "Test Feed"
 
 
@@ -46,7 +46,7 @@ def test_fetch_recent_skips_entries_missing_url_or_title(mock_parse):
         bozo=False, entries=[{"title": "No link", "summary": "s", "published_parsed": None}]
     )
 
-    source = RSSSource("Test Feed", "Marketing", "https://a.com/feed")
+    source = RSSSource("Test Feed", "https://a.com/feed")
     assert source.fetch_recent(since=datetime.date(2026, 1, 1)) == []
 
 
@@ -54,5 +54,5 @@ def test_fetch_recent_skips_entries_missing_url_or_title(mock_parse):
 def test_fetch_recent_returns_empty_on_parse_failure(mock_parse):
     mock_parse.return_value = _FakeParsedFeed(bozo=True, entries=[], bozo_exception=Exception("bad xml"))
 
-    source = RSSSource("Broken Feed", "Marketing", "https://a.com/feed")
+    source = RSSSource("Broken Feed", "https://a.com/feed")
     assert source.fetch_recent(since=datetime.date(2026, 1, 1)) == []

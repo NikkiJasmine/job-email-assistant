@@ -126,3 +126,7 @@ def email_prop(email: str) -> dict:
 
 def url_prop(url: str) -> dict:
     return {"url": url or None}
+
+
+def number_prop(value: float | int | None) -> dict:
+    return {"number": value}

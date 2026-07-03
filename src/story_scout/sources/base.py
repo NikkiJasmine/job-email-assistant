@@ -1,11 +1,11 @@
 """Discovery-source interface.
 
 Any module that can produce RawStory objects for a lookback window can plug
-in here without touching dedup, relevance filtering, generation, or
-Notion-writing code -- those all operate on RawStory and never know which
-source produced it. See rss.py for the first (and currently only)
-implementation; future sources -- Instagram, TikTok, YouTube, Reddit,
-Pinterest, newsletters -- implement the same protocol.
+in here without touching dedup, scoring, generation, or Notion-writing code
+-- those all operate on RawStory and never know which source produced it.
+See rss.py, reddit.py, and youtube.py for the current implementations.
+Instagram, TikTok, and LinkedIn deliberately do not implement this protocol
+(see sources/__init__.py's docstring for why).
 """
 
 import datetime
