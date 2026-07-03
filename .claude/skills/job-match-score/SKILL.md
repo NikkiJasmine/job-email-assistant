@@ -11,10 +11,10 @@ Compares a candidate's CV/profile against a specific job description and produce
 
 Both of the following, before scoring:
 
-1. **The candidate's CV/profile** — a resume file, pasted CV text, or a summary of their skills/experience.
+1. **The candidate's CV/profile** — a resume file, pasted CV text, a summary of their skills/experience, or `profile/nicole_profile.md` if it exists and no other CV/profile is given for this comparison.
 2. **The job description** — pasted text, a file, or a URL (fetch it with WebFetch if only a URL is given).
 
-If either is missing, ask the user for it rather than guessing or scoring on partial information.
+If neither a CV/profile nor `profile/nicole_profile.md` is available, ask the user for one rather than guessing or scoring on partial information.
 
 ## How to score
 
