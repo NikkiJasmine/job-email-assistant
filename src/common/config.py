@@ -40,9 +40,15 @@ _PROVIDER_ENV = _load_provider_registry()
 _REQUIRED_VARS = [
     "NOTION_TOKEN",
     "NOTION_DATA_SOURCE_ID",
+    "NOTION_MORNING_BRIEF_DATABASE_ID",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "GOOGLE_REFRESH_TOKEN",
+    # Required unconditionally, independent of LLM_PROVIDER: the Morning Job
+    # Brief pipeline (job_assistant/main.py) hardcodes the Gemini backend
+    # regardless of what LLM_PROVIDER is set to, specifically so it never
+    # depends on the Anthropic API. See Config.gemini_api_key/gemini_model.
+    "GEMINI_API_KEY",
 ]
 
 
@@ -53,10 +59,18 @@ class Config:
     llm_model: str
     notion_token: str
     notion_data_source_id: str
+    notion_morning_brief_database_id: str
     google_client_id: str
     google_client_secret: str
     google_refresh_token: str
     max_emails_per_run: int
+    # Populated unconditionally from GEMINI_API_KEY/GEMINI_MODEL, independent
+    # of llm_provider/llm_api_key/llm_model above (which follow whatever
+    # LLM_PROVIDER selects). job_assistant/main.py uses these directly rather
+    # than llm_api_key/llm_model, so it always gets real Gemini credentials
+    # even if LLM_PROVIDER happens to be set to something else locally.
+    gemini_api_key: str = ""
+    gemini_model: str = ""
     # Optional: used only when llm_provider == "anthropic", as an automatic
     # fallback when Anthropic fails with a billing/credit error (see
     # llm_client.LLMClient). Independent of LLM_PROVIDER -- OPENAI_API_KEY
@@ -87,6 +101,7 @@ def load_config() -> Config:
         )
 
     openai_api_key_var, openai_model_var, openai_default_model = _PROVIDER_ENV["openai"]
+    _, gemini_model_var, gemini_default_model = _PROVIDER_ENV["gemini"]
 
     # Credential values are stripped of surrounding whitespace before use.
     # GitHub Secrets (and copy/paste in general) can silently pick up a
@@ -101,10 +116,13 @@ def load_config() -> Config:
         llm_model=os.environ.get(model_var, default_model).strip(),
         notion_token=os.environ["NOTION_TOKEN"].strip(),
         notion_data_source_id=os.environ["NOTION_DATA_SOURCE_ID"].strip(),
+        notion_morning_brief_database_id=os.environ["NOTION_MORNING_BRIEF_DATABASE_ID"].strip(),
         google_client_id=os.environ["GOOGLE_CLIENT_ID"].strip(),
         google_client_secret=os.environ["GOOGLE_CLIENT_SECRET"].strip(),
         google_refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"].strip(),
         max_emails_per_run=int(os.environ.get("MAX_EMAILS_PER_RUN", "20")),
+        gemini_api_key=os.environ["GEMINI_API_KEY"].strip(),
+        gemini_model=os.environ.get(gemini_model_var, gemini_default_model).strip(),
         openai_fallback_api_key=(os.environ.get(openai_api_key_var) or "").strip() or None,
         openai_fallback_model=os.environ.get(openai_model_var, openai_default_model).strip(),
     )

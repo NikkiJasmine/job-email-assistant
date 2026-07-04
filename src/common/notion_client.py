@@ -38,6 +38,31 @@ def _plain_rich_text(page: dict, property_name: str) -> str:
     return "".join(part.get("plain_text", "") for part in rich_text)
 
 
+def plain_select(page: dict, property_name: str) -> str:
+    select = page.get("properties", {}).get(property_name, {}).get("select")
+    return (select or {}).get("name", "")
+
+
+def plain_date(page: dict, property_name: str) -> str | None:
+    date = page.get("properties", {}).get(property_name, {}).get("date")
+    return date.get("start") if date else None
+
+
+def plain_checkbox(page: dict, property_name: str) -> bool:
+    return bool(page.get("properties", {}).get(property_name, {}).get("checkbox"))
+
+
+# Alias -- exposed publicly (the leading underscore was module-private) since
+# the Daily Career Review needs to read text properties (Company, Next Step,
+# ...) off raw pages returned by query_pages(), not just internally here.
+plain_rich_text = _plain_rich_text
+
+
+def _chunk_text(text: str, limit: int) -> list[str]:
+    text = text or ""
+    return [text[i : i + limit] for i in range(0, len(text), limit)] or [""]
+
+
 @dataclass
 class ExistingPage:
     page_id: str
@@ -79,6 +104,67 @@ class NotionClient:
                 ]
             }
         )
+
+    def find_page_by_company(self, company: str) -> ExistingPage | None:
+        """Returns the existing page for this Company alone, if any -- used
+        as the fallback search when a Gmail Thread ID lookup misses (e.g. an
+        automated ATS notification with no distinct thread history yet).
+        """
+        return self._find_page({"property": "Company", "rich_text": {"equals": company}})
+
+    def query_pages(self, filter_: dict | None = None, page_size: int = 100) -> list[dict]:
+        """Returns raw page objects matching filter_ (all pages if None),
+        paginating through every result. Used by the Daily Career Review,
+        which needs to scan many rows rather than find a single match."""
+        results: list[dict] = []
+        cursor: str | None = None
+        while True:
+            body: dict = {"page_size": page_size}
+            if filter_:
+                body["filter"] = filter_
+            if cursor:
+                body["start_cursor"] = cursor
+            response = self._client.post(f"/databases/{self.database_id}/query", json=body)
+            response.raise_for_status()
+            data = response.json()
+            results.extend(data.get("results", []))
+            if not data.get("has_more"):
+                return results
+            cursor = data.get("next_cursor")
+
+    def append_note(self, page_id: str, note_text: str) -> None:
+        """Appends note_text to the page's existing Notes, never overwriting
+        prior content."""
+        response = self._client.get(f"/pages/{page_id}")
+        response.raise_for_status()
+        existing = _plain_rich_text(response.json(), "Notes")
+        combined = f"{existing}\n\n{note_text}" if existing else note_text
+        self.update_page(page_id, {"Notes": text_prop(combined)})
+
+    def create_page_with_body(self, database_id: str, properties: dict, body_text: str) -> str:
+        """Creates a page in the given database (not necessarily this
+        client's own database_id) with body_text as page content -- used for
+        the Morning Brief digest, which is longer than a single rich_text
+        property can hold. Chunks into <=2000-char paragraph blocks (Notion's
+        per-block text limit)."""
+        children = [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": chunk}}]},
+            }
+            for chunk in _chunk_text(body_text, 2000)
+        ]
+        response = self._client.post(
+            "/pages",
+            json={
+                "parent": {"database_id": _normalize_database_id(database_id)},
+                "properties": properties,
+                "children": children,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["id"]
 
     def _find_page(self, filter_: dict) -> ExistingPage | None:
         response = self._client.post(

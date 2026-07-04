@@ -43,9 +43,12 @@ def test_custom_provider_registry_file_is_honored(tmp_path, monkeypatch):
 _REQUIRED_NON_LLM_VARS = {
     "NOTION_TOKEN": "notion-token",
     "NOTION_DATA_SOURCE_ID": "db-id",
+    "NOTION_MORNING_BRIEF_DATABASE_ID": "brief-db-id",
     "GOOGLE_CLIENT_ID": "client-id",
     "GOOGLE_CLIENT_SECRET": "client-secret",
     "GOOGLE_REFRESH_TOKEN": "refresh-token",
+    # Required unconditionally -- see Config.gemini_api_key/gemini_model.
+    "GEMINI_API_KEY": "gm-default-123",
 }
 
 
@@ -117,14 +120,14 @@ def test_missing_selected_provider_api_key_raises(monkeypatch):
 
 
 def test_missing_unselected_provider_api_key_is_fine(monkeypatch):
-    # Only the selected provider's key is required -- OPENAI_API_KEY/GEMINI_API_KEY
-    # being unset should not block startup when LLM_PROVIDER=anthropic.
+    # OPENAI_API_KEY being unset should not block startup when LLM_PROVIDER=
+    # anthropic -- unlike GEMINI_API_KEY, it's not required unconditionally
+    # (see the dedicated Gemini-credentials tests below for that).
     _set_env(
         monkeypatch,
         LLM_PROVIDER="anthropic",
         ANTHROPIC_API_KEY="sk-ant-123",
         OPENAI_API_KEY=None,
-        GEMINI_API_KEY=None,
     )
 
     config_module.load_config()  # should not raise
@@ -135,6 +138,63 @@ def test_missing_notion_or_google_vars_raises(monkeypatch):
 
     with pytest.raises(RuntimeError, match="NOTION_TOKEN"):
         config_module.load_config()
+
+
+def test_missing_morning_brief_database_id_raises(monkeypatch):
+    _set_env(monkeypatch, ANTHROPIC_API_KEY="sk-ant-123", NOTION_MORNING_BRIEF_DATABASE_ID=None)
+
+    with pytest.raises(RuntimeError, match="NOTION_MORNING_BRIEF_DATABASE_ID"):
+        config_module.load_config()
+
+
+def test_morning_brief_database_id_is_loaded(monkeypatch):
+    _set_env(monkeypatch, ANTHROPIC_API_KEY="sk-ant-123")
+
+    config = config_module.load_config()
+
+    assert config.notion_morning_brief_database_id == "brief-db-id"
+
+
+# --- Gemini credentials, required unconditionally regardless of LLM_PROVIDER ---
+#
+# job_assistant/main.py hardcodes the Gemini backend for the Morning Job
+# Brief pipeline (never Anthropic), so these must always be populated from
+# GEMINI_API_KEY/GEMINI_MODEL even when a different LLM_PROVIDER is selected
+# -- otherwise main.py could silently pair another provider's key with the
+# Gemini backend.
+
+
+def test_missing_gemini_api_key_raises_even_with_other_provider_selected(monkeypatch):
+    _set_env(monkeypatch, LLM_PROVIDER="anthropic", ANTHROPIC_API_KEY="sk-ant-123", GEMINI_API_KEY=None)
+
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        config_module.load_config()
+
+
+def test_gemini_credentials_populated_regardless_of_llm_provider(monkeypatch):
+    _set_env(
+        monkeypatch,
+        LLM_PROVIDER="anthropic",
+        ANTHROPIC_API_KEY="sk-ant-123",
+        GEMINI_API_KEY="gm-real-key",
+        GEMINI_MODEL="gemini-custom",
+    )
+
+    config = config_module.load_config()
+
+    assert config.gemini_api_key == "gm-real-key"
+    assert config.gemini_model == "gemini-custom"
+    # llm_api_key still reflects the *selected* provider (anthropic here) --
+    # main.py just doesn't use it for the Gemini call.
+    assert config.llm_api_key == "sk-ant-123"
+
+
+def test_gemini_model_defaults_when_not_overridden(monkeypatch):
+    _set_env(monkeypatch, ANTHROPIC_API_KEY="sk-ant-123")
+
+    config = config_module.load_config()
+
+    assert config.gemini_model == "gemini-1.5-flash"
 
 
 # --- OpenAI billing-fallback credentials -------------------------------------

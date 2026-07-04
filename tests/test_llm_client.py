@@ -9,10 +9,15 @@ from src.common.llm_client import CLASSIFICATIONS, LLMBillingError, LLMClient, L
 _ANALYSIS_DATA = {
     "summary": "A short summary.",
     "what_recruiter_wants": "They want a reply.",
-    "classification": "Next Step",
+    "classification": "Another next step",
     "suggested_reply": "Thank you for reaching out.",
     "company": "Acme Corp",
     "role": "Marketing Manager",
+    "contact_name": "Jane Recruiter",
+    "priority": "Normal",
+    "legitimacy_confidence": "High confidence genuine",
+    "legitimacy_notes": "",
+    "next_action": "Reply today",
 }
 
 
@@ -253,7 +258,7 @@ def test_openai_analyze_email(mock_openai):
 
     llm = LLMClient(provider="openai", api_key="key", model="gpt-4o-mini")
     analysis = llm.analyze_email("some email body")
-    assert analysis.classification == "Next Step"
+    assert analysis.classification == "Another next step"
     assert analysis.company == "Acme Corp"
 
 
@@ -293,7 +298,7 @@ def test_gemini_analyze_email(mock_genai_client):
 
     llm = LLMClient(provider="gemini", api_key="key", model="gemini-1.5-flash")
     analysis = llm.analyze_email("some email body")
-    assert analysis.classification == "Next Step"
+    assert analysis.classification == "Another next step"
     assert analysis.company == "Acme Corp"
 
 

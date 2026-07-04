@@ -1,4 +1,4 @@
-name: Daily Job Email Assistant
+name: Morning Job Brief
 
 on:
   schedule:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: daily-email-check
+  group: morning-job-brief
   cancel-in-progress: false
 
 jobs:
@@ -30,17 +30,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run job email assistant
+      - name: Run Morning Job Brief
         env:
-          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          # Hardcoded to Gemini -- this pipeline deliberately does not use
+          # Anthropic/OpenAI (see CLAUDE.md). LLM_PROVIDER is still read via
+          # the shared config module, just fixed here rather than a variable.
+          LLM_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATA_SOURCE_ID: ${{ vars.NOTION_DATA_SOURCE_ID }}
+          NOTION_MORNING_BRIEF_DATABASE_ID: ${{ vars.NOTION_MORNING_BRIEF_DATABASE_ID }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
